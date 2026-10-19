@@ -15,7 +15,7 @@ from aiogram.types import BotCommand
 from .access import AccessMiddleware, AdminChecker
 from .chat_settings import ChatStore, defaults_from_env
 from .config import Settings
-from .handlers import climate, settings as settings_menu
+from .handlers import climate, migration, settings as settings_menu
 from .mqtt_listener import run_mqtt
 from .scheduler import run_scheduler
 from .store import Store
@@ -59,7 +59,8 @@ async def main() -> None:
     access = AccessMiddleware(settings, chats)
     dp.message.middleware(access)
     dp.callback_query.middleware(access)
-    # Settings first: its value-input handler must see text before the keyword handler.
+    dp.include_router(migration.build_router(chats))
+    # Settings before climate: its value-input handler must see text before the keyword handler.
     dp.include_router(settings_menu.build_router(chats, AdminChecker(settings)))
     dp.include_router(climate.build_router(settings, store))
 

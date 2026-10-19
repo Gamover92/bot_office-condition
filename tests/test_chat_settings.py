@@ -105,3 +105,19 @@ def test_alert_states_and_report_log():
     assert store.last_report(1) is None
     store.mark_report(1, "2026-10-19")
     assert store.last_report(1) == "2026-10-19"
+
+
+def test_migrate_moves_all_tables():
+    store = make_store()
+    store.update(-1, co2_max=900)
+    store.save_alert_states(-1, "AA", {"co2": AlertState("bad", "bad")})
+    store.mark_report(-1, "2026-10-19")
+    store.register(-100)  # the new chat already has a row: the old settings win
+    store.save_alert_states(-100, "AA", {"co2": AlertState("ok", "ok")})
+    store.migrate(-1, -100)
+    assert store.chats() == [-100]
+    assert store.get(-100).co2_max == 900
+    assert store.alert_states(-100, "AA") == {"co2": AlertState("bad", "bad")}
+    assert store.alert_states(-1, "AA") == {}
+    assert store.last_report(-100) == "2026-10-19"
+    assert store.last_report(-1) is None

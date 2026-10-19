@@ -179,3 +179,9 @@ class ChatStore:
     def mark_report(self, chat_id: int, date: str) -> None:
         self.db.execute("INSERT OR REPLACE INTO report_log (chat_id, date) VALUES (?, ?)", (chat_id, date))
         self.db.commit()
+
+    def migrate(self, old_id: int, new_id: int) -> None:
+        """Move a chat to its new ID (group upgraded to supergroup). Old rows replace the new ones."""
+        with self.db:
+            for table in ("chat_settings", "alert_state", "report_log"):
+                self.db.execute(f"UPDATE OR REPLACE {table} SET chat_id=? WHERE chat_id=?", (new_id, old_id))

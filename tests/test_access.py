@@ -66,3 +66,12 @@ async def test_group_member_and_error_are_not_admin():
     bot.get_chat_member.return_value = SimpleNamespace(status=ChatMemberStatus.CREATOR)
     assert await checker.is_admin(bot, -100, "group", 2)
     assert bot.get_chat_member.await_count == 3
+
+
+async def test_middleware_passes_migration_service_message():
+    chats = ChatStore(sqlite3.connect(":memory:"), ChatConfig())
+    handler = AsyncMock(return_value="ok")
+    event = SimpleNamespace(migrate_to_chat_id=-200)
+    result = await AccessMiddleware(LIMITED, chats)(handler, event, data(1, 2))
+    assert result == "ok"
+    assert chats.chats() == []  # the chat is not registered

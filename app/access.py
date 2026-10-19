@@ -30,6 +30,10 @@ class AccessMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        if getattr(event, "migrate_to_chat_id", None):
+            # Telegram's service message about a group upgrade. The handler sends nothing
+            # and only moves rows of a chat that is already registered (so it was allowed).
+            return await handler(event, data)
         user = data.get("event_from_user")
         chat = data.get("event_chat")
         user_id = user.id if user else None

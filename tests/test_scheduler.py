@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramMigrateToChat
 from aiogram.methods import SendMessage
 
 from app import scheduler
@@ -109,3 +109,15 @@ async def test_run_scheduler_survives_tick_error(monkeypatch):
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(scheduler.run_scheduler(AsyncMock(), S, None, None, interval=0.01), 0.2)
     assert calls >= 2
+
+
+async def test_migrated_chat_is_moved():
+    store, chats, now = setup(1300)
+    chats.update(1, co2_max=1000)
+    bot = AsyncMock()
+    bot.send_message.side_effect = TelegramMigrateToChat(
+        method=SendMessage(chat_id=1, text="x"), message="group upgraded", migrate_to_chat_id=-100
+    )
+    await tick(bot, S, store, chats, now)
+    assert chats.chats() == [-100]
+    assert chats.get(-100).co2_max == 1000

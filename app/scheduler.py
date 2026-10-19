@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import TelegramForbiddenError, TelegramMigrateToChat
 
 from .alerts import in_quiet_hours, step
 from .chat_settings import ChatConfig, ChatStore
@@ -70,6 +70,9 @@ async def tick(
         except TelegramForbiddenError:
             log.warning("No access to chat %s: alerts and report are now off", chat_id)
             chats.disable(chat_id)
+        except TelegramMigrateToChat as exc:
+            log.info("Chat %s moved to %s", chat_id, exc.migrate_to_chat_id)
+            chats.migrate(chat_id, exc.migrate_to_chat_id)
         except Exception:
             log.exception("Scheduler failed for chat %s", chat_id)
 
