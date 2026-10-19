@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.dispatcher.event.bases import SkipHandler
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -51,37 +52,91 @@ def test_parse_input():
         parse_input("unknown", "1")
 
 
-def _handler_env():
+PROMPT_ID = 42
+
+
+def _handler_env(chat_type="supergroup"):
     admins = SimpleNamespace(is_admin=AsyncMock(return_value=True))
     router = build_router(ChatStore(sqlite3.connect(":memory:"), ChatConfig()), admins)
     on_button = next(h for h in router.callback_query.handlers if h.callback.__name__ == "on_button").callback
+    on_value = next(h for h in router.message.handlers if h.callback.__name__ == "on_value").callback
     msg = AsyncMock(spec=Message)
-    msg.chat = SimpleNamespace(id=5, type="supergroup")  # pydantic fields are not visible to spec
+    msg.chat = SimpleNamespace(id=5, type=chat_type)  # pydantic fields are not visible to spec
     msg.message_id = 1
-    msg.answer, msg.edit_text = AsyncMock(), AsyncMock()
+    msg.answer = AsyncMock(return_value=SimpleNamespace(message_id=PROMPT_ID))
+    msg.edit_text = AsyncMock()
     query = AsyncMock()
     query.message = msg
-    query.from_user.id = 7
+    query.from_user = SimpleNamespace(id=7, first_name="<Ann>")
     state = FSMContext(MemoryStorage(), StorageKey(bot_id=1, chat_id=5, user_id=7))
 
     async def press(action, field=""):
         await on_button(query=query, callback_data=SetCb(action=action, field=field), bot=AsyncMock(), state=state)
 
-    return msg, state, press
+    async def send(text, reply_to=None):
+        reply = SimpleNamespace(message_id=reply_to) if reply_to else None
+        message = AsyncMock(spec=Message)
+        message.chat = msg.chat
+        message.text = text
+        message.reply_to_message = reply
+        message.answer = AsyncMock()
+        await on_value(message=message, state=state)
+        return message
+
+    return msg, state, press, send
 
 
-async def test_edit_prompt_uses_force_reply():
-    msg, state, press = _handler_env()
+async def test_edit_prompt_uses_selective_force_reply():
+    msg, state, press, _ = _handler_env()
     await press("edit", "co2_max")
     assert await state.get_state() == EditValue.waiting.state
+    assert (await state.get_data())["prompt_id"] == PROMPT_ID
+    text = msg.answer.await_args.args[0]
+    assert text.startswith('<a href="tg://user?id=7">&lt;Ann&gt;</a>, введите')
     markup = msg.answer.await_args.kwargs["reply_markup"]
     assert isinstance(markup, ForceReply)
+    assert markup.selective is True
     assert markup.input_field_placeholder == "1000"
+
+
+async def test_group_value_must_reply_to_prompt():
+    _, state, press, send = _handler_env()
+    await press("edit", "co2_max")
+    with pytest.raises(SkipHandler):
+        await send("hello")
+    assert await state.get_state() == EditValue.waiting.state
+    with pytest.raises(SkipHandler):
+        await send("900", reply_to=PROMPT_ID + 1)
+    assert await state.get_state() == EditValue.waiting.state
+    reply = await send("900", reply_to=PROMPT_ID)
+    assert await state.get_state() is None
+    assert reply.answer.await_args.args[0].startswith("✅ Сохранено.")
+
+
+async def test_private_value_needs_no_reply():
+    _, state, press, send = _handler_env("private")
+    await press("edit", "co2_max")
+    reply = await send("900")
+    assert await state.get_state() is None
+    assert reply.answer.await_args.args[0].startswith("✅ Сохранено.")
+
+
+async def test_group_timeout_is_silent_without_reply():
+    _, state, press, send = _handler_env()
+    await press("edit", "co2_max")
+    await state.update_data(started=0)
+    with pytest.raises(SkipHandler):
+        await send("hello")
+    assert await state.get_state() is None
+    await press("edit", "co2_max")
+    await state.update_data(started=0)
+    message = await send("900", reply_to=PROMPT_ID)
+    assert message.answer.await_args.args[0].startswith("Время ввода истекло")
 
 
 @pytest.mark.parametrize("action,field", [("toggle", "alerts"), ("reset", "")])
 async def test_toggle_and_reset_clear_pending_input(action, field):
-    _, state, press = _handler_env()
+    _, state, press, _ = _handler_env()
     await press("edit", "co2_max")
     await press(action, field)
     assert await state.get_state() is None

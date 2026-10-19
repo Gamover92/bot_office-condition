@@ -128,7 +128,7 @@ The menu is one message that the bot edits in place:
 - 📏 Limits: CO₂ max, temperature min–max, humidity min–max, PM2.5 max.
 - ↩️ Reset to defaults, ✖️ Close.
 
-For a value, the admin pushes "изменить". The bot asks for the value and waits for the admin's next message in this chat (aiogram FSM, 5 min timeout). Accepted formats:
+For a value, the admin pushes "изменить". The bot asks for the value: the prompt mentions the admin and uses a selective `ForceReply`, so the reply field opens only for this admin. The bot waits for the admin's value (aiogram FSM, 5 min timeout). In a group, only a reply to the prompt is the value; other messages of the admin are handled as usual. In a private chat, the next text message is the value. Accepted formats:
 
 - number: `1000`
 - range: `19-26`

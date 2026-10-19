@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import html
 import time
 from typing import Any, Callable
 
 from aiogram import Bot, F, Router
+from aiogram.dispatcher.event.bases import SkipHandler
+from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.filters.callback_data import CallbackData
@@ -141,13 +144,17 @@ def build_router(chats: ChatStore, admins: AdminChecker) -> Router:
             return
         if action == "edit" and field in FIELDS:
             title, _, example = FIELDS[field]
+            user = query.from_user
             await state.set_state(EditValue.waiting)
             await state.update_data(field=field, started=time.time())
             await query.answer()
-            await msg.answer(
-                f"Введите {title}. Пример: <code>{example}</code>",
-                reply_markup=ForceReply(input_field_placeholder=example),
+            # The mention makes the selective ForceReply open the reply field only for this admin.
+            prompt = await msg.answer(
+                f'<a href="tg://user?id={user.id}">{html.escape(user.first_name)}</a>, '
+                f"введите {title}. Пример: <code>{example}</code>",
+                reply_markup=ForceReply(selective=True, input_field_placeholder=example),
             )
+            await state.update_data(prompt_id=prompt.message_id)
             return
         if action == "toggle" and field in TOGGLES:
             await state.clear()
@@ -169,10 +176,19 @@ def build_router(chats: ChatStore, admins: AdminChecker) -> Router:
     @router.message(EditValue.waiting, F.text, ~F.text.startswith("/"))
     async def on_value(message: Message, state: FSMContext) -> None:
         data = await state.get_data()
+        reply = message.reply_to_message
+        # In a group, only a reply to the prompt is the value. Other messages go to the next handlers.
+        expected = message.chat.type == ChatType.PRIVATE or (
+            reply is not None and reply.message_id == data.get("prompt_id")
+        )
         if time.time() - data.get("started", 0) > INPUT_TIMEOUT:
             await state.clear()
+            if not expected:
+                raise SkipHandler()
             await message.answer("Время ввода истекло. Откройте /settings снова.")
             return
+        if not expected:
+            raise SkipHandler()
         field = data["field"]
         try:
             value = parse_input(field, message.text or "")

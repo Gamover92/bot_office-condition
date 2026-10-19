@@ -1,12 +1,15 @@
 import time
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import EditMessageText
 from aiogram.types import BufferedInputFile
 
 from app.config import Settings
 from app.qingping import Reading
 from app.store import Store
-from app.view import ClimateCb, View, build_keyboard, build_view, send_view
+from app.view import ClimateCb, View, build_keyboard, build_view, edit_view, send_view
 
 S = Settings(bot_token="x", tz="Europe/Moscow")
 
@@ -87,3 +90,43 @@ async def test_build_view_defaults_to_freshest_sensor():
     store.add([Reading("ZZ", int(now), {"co2": 500.0})])
     view = await build_view(S, store, now=now)
     assert texts(view.keyboard)[0] == ["Датчик AA", "• Датчик ZZ •"]
+
+
+def text_message(calls: list[str]) -> SimpleNamespace:
+    bot = AsyncMock()
+    bot.send_photo.side_effect = lambda *a, **k: calls.append("send")
+    bot.send_message.side_effect = lambda *a, **k: calls.append("send")
+    message = SimpleNamespace(photo=None, bot=bot, chat=SimpleNamespace(id=5))
+    message.delete = AsyncMock(side_effect=lambda: calls.append("delete"))
+    message.edit_text = AsyncMock()
+    return message
+
+
+def bad_request(text: str) -> TelegramBadRequest:
+    return TelegramBadRequest(method=EditMessageText(text="x"), message=text)
+
+
+async def test_edit_view_type_change_sends_before_delete():
+    calls = []
+    message = text_message(calls)
+    await edit_view(message, View("text", b"png", None))
+    assert calls == ["send", "delete"]
+
+
+async def test_edit_view_ignores_failed_delete():
+    calls = []
+    message = text_message(calls)
+    message.delete.side_effect = bad_request("message can't be deleted")
+    await edit_view(message, View("text", b"png", None))
+    assert calls == ["send"]
+
+
+async def test_edit_view_sends_new_view_when_edit_fails():
+    calls = []
+    message = text_message(calls)
+    message.edit_text.side_effect = bad_request("message to edit not found")
+    await edit_view(message, View("text", None, None))
+    assert calls == ["send"]
+    message.edit_text.side_effect = bad_request("message is not modified")
+    await edit_view(message, View("text", None, None))
+    assert calls == ["send"]

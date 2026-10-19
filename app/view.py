@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 import time
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
@@ -22,6 +24,8 @@ from .charts import render_chart
 from .config import Settings
 from .store import Store
 from .summary import caption, device_name
+
+log = logging.getLogger(__name__)
 
 CHART_METRICS = ("co2", "temperature", "humidity", "pm25", "pm10", "tvoc", "tvoc_index", "noise")
 SHORT = {
@@ -117,8 +121,12 @@ async def edit_view(message: Message, view: View) -> None:
         elif not view.photo and not message.photo:
             await message.edit_text(view.text, reply_markup=view.keyboard)
         else:
-            await message.delete()
+            # Send first: if sending fails, the old summary stays.
             await send_view(message.bot, message.chat.id, view)
+            with contextlib.suppress(TelegramBadRequest):
+                await message.delete()
     except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc):
-            raise
+        if "message is not modified" in str(exc):
+            return
+        log.warning("Cannot edit the summary (%s), sending a new one", exc)
+        await send_view(message.bot, message.chat.id, view)

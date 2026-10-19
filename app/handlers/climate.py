@@ -38,9 +38,11 @@ def build_router(settings: Settings, store: Store) -> Router:
 
     @router.callback_query(ClimateCb.filter())
     async def on_button(query: CallbackQuery, callback_data: ClimateCb) -> None:
-        view = await build_view(settings, store, callback_data.mac, callback_data.metric, callback_data.hours)
-        if isinstance(query.message, Message):
-            await edit_view(query.message, view)
-        await query.answer()
+        try:
+            view = await build_view(settings, store, callback_data.mac, callback_data.metric, callback_data.hours)
+            if isinstance(query.message, Message):
+                await edit_view(query.message, view)
+        finally:
+            await query.answer()
 
     return router
