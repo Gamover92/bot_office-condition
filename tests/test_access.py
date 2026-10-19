@@ -35,6 +35,16 @@ async def test_middleware_blocks():
     assert chats.chats() == []
 
 
+async def test_denied_message_shows_ids():
+    chats = ChatStore(sqlite3.connect(":memory:"), ChatConfig())
+    message = MagicMock(spec=Message)
+    message.answer = AsyncMock()
+    await AccessMiddleware(LIMITED, chats)(AsyncMock(), message, data(42, -100777))
+    text = message.answer.await_args.args[0]
+    assert "<code>-100777</code>" in text and "ALLOWED_CHAT_IDS" in text
+    assert "<code>42</code>" in text and "ALLOWED_USER_IDS" in text
+
+
 async def test_admin_in_private_chat():
     checker = AdminChecker(LIMITED)
     bot = AsyncMock()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Awaitable, Callable
 
@@ -15,6 +16,18 @@ from .config import Settings
 
 ADMIN_CACHE_TTL = 300
 ADMIN_STATUSES = (ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR)
+
+log = logging.getLogger(__name__)
+
+
+def denied_text(user_id: int | None, chat_id: int | None) -> str:
+    # IDs are not secret; showing them saves the admin a search.
+    return (
+        "Нет доступа.\n"
+        f"ID этого чата: <code>{chat_id}</code> — добавьте его в ALLOWED_CHAT_IDS в файле .env.\n"
+        f"Ваш ID: <code>{user_id}</code> — для ALLOWED_USER_IDS.\n"
+        "Затем перезапустите бота: docker compose up -d"
+    )
 
 
 class AccessMiddleware(BaseMiddleware):
@@ -45,7 +58,8 @@ class AccessMiddleware(BaseMiddleware):
             if isinstance(event, CallbackQuery):
                 await event.answer("Нет доступа", show_alert=True)
             elif isinstance(event, Message):
-                await event.answer("Нет доступа. Попросите администратора добавить этот чат.")
+                await event.answer(denied_text(user_id, chat_id))
+            log.warning("Access denied: chat %s, user %s", chat_id, user_id)
             return None
         if chat_id is not None:
             self.chats.register(chat_id)
