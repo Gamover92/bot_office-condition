@@ -11,6 +11,8 @@ The parser is tolerant: plain numbers and a single sensorData object also work.
 from __future__ import annotations
 
 import json
+import math
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -28,6 +30,10 @@ METRICS: dict[str, tuple[str, str, int]] = {
     "pressure": ("Давление", "кПа", 1),
     "battery": ("Батарея", "%", 0),
 }
+
+MAC_RE = re.compile(r"[0-9A-F]{12}")
+# Plausible Unix time in seconds (after a milliseconds value is converted).
+MAX_TS = 1e11
 
 ALIASES = {"pm2.5": "pm25", "pm2_5": "pm25", "temp": "temperature", "hum": "humidity"}
 
@@ -61,13 +67,25 @@ def _num(v: Any) -> float | None:
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, str):
+        num = float(v)
+    elif isinstance(v, str):
         try:
-            return float(v)
+            num = float(v)
         except ValueError:
             return None
-    return None
+    else:
+        return None
+    return num if math.isfinite(num) else None
+
+
+def _ts(v: Any) -> float | None:
+    """Unix time in seconds, or None if missing or not plausible."""
+    ts = _num(v)
+    if ts is None:
+        return None
+    if ts > 1e12:  # milliseconds
+        ts /= 1000
+    return ts if 0 < ts < MAX_TS else None
 
 
 def mac_from_topic(topic: str) -> str:
@@ -84,10 +102,10 @@ def parse_message(topic: str, payload: bytes | str) -> list[Reading]:
     if not isinstance(data, dict):
         return []
 
-    mac = str(data.get("mac") or mac_from_topic(topic)).upper().replace(":", "")
-    if not mac:
+    mac = str(data.get("mac") or mac_from_topic(topic)).upper().replace(":", "").replace("-", "")
+    if not MAC_RE.fullmatch(mac):
         return []
-    msg_ts = _num(data.get("timestamp"))
+    msg_ts = _ts(data.get("timestamp"))
 
     samples = data.get("sensorData", data)
     if isinstance(samples, dict):
@@ -108,9 +126,7 @@ def parse_message(topic: str, payload: bytes | str) -> list[Reading]:
                     values[key] = num
         if not values:
             continue
-        ts = _num(sample.get("timestamp")) or msg_ts or time.time()
-        if ts > 1e12:  # milliseconds
-            ts /= 1000
+        ts = _ts(sample.get("timestamp")) or msg_ts or time.time()
         readings.append(Reading(mac=mac, ts=int(ts), values=values))
     return readings
 

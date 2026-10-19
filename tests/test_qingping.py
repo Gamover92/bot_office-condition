@@ -1,4 +1,5 @@
 import json
+import time
 
 from app.qingping import advice, overall, parse_message, rate
 
@@ -29,20 +30,44 @@ def test_parse_qingping_json():
 
 
 def test_parse_realtime_type_17():
-    msg = {"mac": "AA", "type": "17", "sensorData": [{"timestamp": {"value": 5}, "co2": {"value": 600}}]}
-    assert parse_message("qingping/AA/up", json.dumps(msg))[0].values == {"co2": 600}
+    msg = {"mac": "582D34AABBCC", "type": "17", "sensorData": [{"timestamp": {"value": 5}, "co2": {"value": 600}}]}
+    assert parse_message("qingping/582D34AABBCC/up", json.dumps(msg))[0].values == {"co2": 600}
 
 
 def test_parse_flat_payload_uses_topic_mac():
-    readings = parse_message("qingping/aabb/up", b'{"temperature": 21, "pm2.5": 3}')
-    assert readings[0].mac == "AABB"
+    readings = parse_message("qingping/582d34aabbcc/up", b'{"temperature": 21, "pm2.5": 3}')
+    assert readings[0].mac == "582D34AABBCC"
     assert readings[0].values == {"temperature": 21.0, "pm25": 3.0}
 
 
 def test_parse_ignores_garbage():
-    assert parse_message("qingping/x/up", b"\x00\x01") == []
-    assert parse_message("qingping/x/up", b'{"type": "28", "setting": {}}') == []
-    assert parse_message("qingping/x/up", b"[1, 2]") == []
+    assert parse_message("qingping/582D34AABBCC/up", b"\x00\x01") == []
+    assert parse_message("qingping/582D34AABBCC/up", b'{"type": "28", "setting": {}}') == []
+    assert parse_message("qingping/582D34AABBCC/up", b"[1, 2]") == []
+
+
+def test_parse_drops_non_finite_values():
+    msg = b'{"mac": "582D34AABBCC", "timestamp": 10, "co2": NaN, "temperature": "inf", "humidity": "1e400", "pm25": 3}'
+    readings = parse_message("qingping/582D34AABBCC/up", msg)
+    assert readings[0].values == {"pm25": 3.0}
+
+
+def test_parse_non_finite_timestamp_uses_fallback():
+    msg = b'{"mac": "582D34AABBCC", "timestamp": 100, "sensorData": [{"timestamp": Infinity, "co2": 600}]}'
+    assert parse_message("qingping/582D34AABBCC/up", msg)[0].ts == 100
+    before = time.time()
+    msg = b'{"mac": "582D34AABBCC", "timestamp": "nan", "sensorData": [{"timestamp": Infinity, "co2": 600}]}'
+    assert int(before) <= parse_message("qingping/582D34AABBCC/up", msg)[0].ts <= time.time()
+
+
+def test_parse_mac_validation():
+    long_mac = "A" * 60
+    assert parse_message(f"qingping/{long_mac}/up", b'{"co2": 600}') == []
+    assert parse_message("qingping/x/up", json.dumps({"mac": long_mac, "co2": 600})) == []
+    assert parse_message("qingping/x/up", b'{"co2": 600}') == []
+    readings = parse_message("qingping/x/up", b'{"mac": "58:2D:34:AA:BB:CC", "co2": 600}')
+    assert readings[0].mac == "582D34AABBCC"
+    assert parse_message("qingping/x/up", b'{"mac": "58-2d-34-aa-bb-cc", "co2": 600}')[0].mac == "582D34AABBCC"
 
 
 def test_rating():
