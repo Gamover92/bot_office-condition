@@ -141,3 +141,25 @@ async def test_migration_does_not_overwrite_new_chat_settings():
     assert chats.get(-100).co2_max == 900
     assert chats.get(-100).alerts is False
     assert -1 not in chats.chats()
+
+
+async def test_report_is_not_lost_when_scheduler_finds_a_migration():
+    store, chats, now = setup(700, report=True)  # chat 1, report due at 10:00
+    bot = AsyncMock()
+    sent = []
+
+    async def send(chat_id, *args, **kwargs):
+        if chat_id == 1:
+            raise TelegramMigrateToChat(
+                method=SendMessage(chat_id=1, text="x"), message="group upgraded", migrate_to_chat_id=-100
+            )
+        sent.append(chat_id)
+
+    bot.send_message.side_effect = send
+    bot.send_photo.side_effect = send
+    await tick(bot, S, store, chats, now)
+    assert chats.chats() == [-100]
+    assert chats.last_report(-100) is None
+    await tick(bot, S, store, chats, now + 60)
+    assert sent == [-100]
+    assert chats.last_report(-100) == "2026-10-19"

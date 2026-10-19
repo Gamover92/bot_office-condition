@@ -147,3 +147,10 @@ def test_migrate_without_overwrite_moves_when_new_chat_is_unknown():
     store.migrate(-1, -100, overwrite=False)
     assert store.chats() == [-100]
     assert store.get(-100).co2_max == 900
+
+
+def test_unmark_report():
+    store = make_store()
+    store.mark_report(1, "2026-10-19")
+    store.unmark_report(1)
+    assert store.last_report(1) is None

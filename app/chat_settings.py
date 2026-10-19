@@ -180,6 +180,10 @@ class ChatStore:
         self.db.execute("INSERT OR REPLACE INTO report_log (chat_id, date) VALUES (?, ?)", (chat_id, date))
         self.db.commit()
 
+    def unmark_report(self, chat_id: int) -> None:
+        self.db.execute("DELETE FROM report_log WHERE chat_id=?", (chat_id,))
+        self.db.commit()
+
     def migrate(self, old_id: int, new_id: int, overwrite: bool = True) -> None:
         """Move a chat to its new ID (group upgraded to supergroup).
 

@@ -57,7 +57,12 @@ async def _check_chat(
     if report_due(cfg, local, chats.last_report(chat_id)):
         # Mark first: an error in sending must not cause a new report each minute.
         chats.mark_report(chat_id, local.date().isoformat())
-        await send_view(bot, chat_id, await build_view(settings, store, hours=REPORT_HOURS, now=now_ts))
+        try:
+            await send_view(bot, chat_id, await build_view(settings, store, hours=REPORT_HOURS, now=now_ts))
+        except TelegramMigrateToChat:
+            # The report was not delivered: let the new chat get it in the catch-up window.
+            chats.unmark_report(chat_id)
+            raise
 
 
 async def tick(
