@@ -49,3 +49,11 @@ def test_delete_device():
     store.delete_device("AA")
     assert store.devices() == ["BB"]
     assert store.latest("AA") is None
+
+
+def test_delete_device_normalises_mac_and_returns_count():
+    store = Store(":memory:")
+    store.add([Reading("582D34AABBCC", 100, {"co2": 1}), Reading("582D34AABBCC", 200, {"co2": 2})])
+    assert store.delete_device("58:2d:34:aa:bb:cc") == 2
+    assert store.devices() == []
+    assert store.delete_device("58-2d-34-aa-bb-cc") == 0

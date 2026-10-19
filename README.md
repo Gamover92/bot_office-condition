@@ -101,7 +101,7 @@ Windows PowerShell 5.1 убирает внутренние кавычки из �
 В Windows PowerShell то же самое:
 
 ```powershell
-docker compose exec bot python -c "from app.store import Store; Store('/data/climate.db').delete_device('582D34000000')"
+docker compose exec bot python -c "from app.store import Store; print(Store('/data/climate.db').delete_device('582D34000000'))"
 ```
 
 ## Настройки

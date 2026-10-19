@@ -41,9 +41,12 @@ class Store:
         rows = self.db.execute("SELECT mac FROM readings GROUP BY mac ORDER BY MAX(ts) DESC, mac")
         return [r[0] for r in rows]
 
-    def delete_device(self, mac: str) -> None:
-        self.db.execute("DELETE FROM readings WHERE mac=?", (mac,))
+    def delete_device(self, mac: str) -> int:
+        """Delete all readings of a sensor. Returns the number of deleted rows."""
+        mac = mac.upper().replace(":", "").replace("-", "")
+        cursor = self.db.execute("DELETE FROM readings WHERE mac=?", (mac,))
         self.db.commit()
+        return cursor.rowcount
 
     def latest(self, mac: str) -> Reading | None:
         """Newest value of each metric, with the newest timestamp."""
