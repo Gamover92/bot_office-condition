@@ -46,6 +46,7 @@ class ClimateCb(CallbackData, prefix="cl"):
     mac: str
     metric: str
     hours: int
+    owner: int  # user who asked for the summary; only this user can change it
 
 
 @dataclass(frozen=True)
@@ -55,25 +56,27 @@ class View:
     keyboard: InlineKeyboardMarkup | None
 
 
-def _button(text: str, mac: str, metric: str, hours: int, active: bool = False) -> InlineKeyboardButton:
+def _button(
+    text: str, mac: str, metric: str, hours: int, owner: int, active: bool = False
+) -> InlineKeyboardButton:
     return InlineKeyboardButton(
         text=f"• {text} •" if active else text,
-        callback_data=ClimateCb(mac=mac, metric=metric, hours=hours).pack(),
+        callback_data=ClimateCb(mac=mac, metric=metric, hours=hours, owner=owner).pack(),
     )
 
 
 def build_keyboard(
-    settings: Settings, macs: list[str], mac: str, metrics: list[str], metric: str, hours: int
+    settings: Settings, macs: list[str], mac: str, metrics: list[str], metric: str, hours: int, owner: int
 ) -> InlineKeyboardMarkup:
     rows = []
     if len(macs) > 1:
         # Stable button order for the user; the default device is chosen by the caller.
-        rows.append([_button(device_name(settings, m), m, metric, hours, m == mac) for m in sorted(macs)])
+        rows.append([_button(device_name(settings, m), m, metric, hours, owner, m == mac) for m in sorted(macs)])
     chartable = [m for m in CHART_METRICS if m in metrics]
     for i in range(0, len(chartable), 4):
-        rows.append([_button(SHORT[m], mac, m, hours, m == metric) for m in chartable[i : i + 4]])
-    rows.append([_button(label, mac, metric, h, h == hours) for h, label in PERIODS.items()])
-    rows.append([_button("🔄 Обновить", mac, metric, hours)])
+        rows.append([_button(SHORT[m], mac, m, hours, owner, m == metric) for m in chartable[i : i + 4]])
+    rows.append([_button(label, mac, metric, h, owner, h == hours) for h, label in PERIODS.items()])
+    rows.append([_button("🔄 Обновить", mac, metric, hours, owner)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -84,7 +87,9 @@ async def build_view(
     metric: str = "co2",
     hours: int = 24,
     now: float | None = None,
+    owner: int | None = None,
 ) -> View:
+    """Without an owner (the morning report) the summary has no buttons."""
     now = time.time() if now is None else now
     macs = store.devices()
     if not macs:
@@ -99,7 +104,7 @@ async def build_view(
     rows = store.history(mac, int(now) - hours * 3600)
     points = [(r.ts, r.values[metric]) for r in rows if metric in r.values]
     photo = await asyncio.to_thread(render_chart, points, metric, ZoneInfo(settings.tz))
-    keyboard = build_keyboard(settings, macs, mac, metrics, metric, hours)
+    keyboard = None if owner is None else build_keyboard(settings, macs, mac, metrics, metric, hours, owner)
     return View(caption(settings, reading, now), photo, keyboard)
 
 

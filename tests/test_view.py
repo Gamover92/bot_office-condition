@@ -20,14 +20,14 @@ def texts(markup):
 
 
 def test_keyboard_one_device():
-    kb = build_keyboard(S, ["AA"], "AA", ["co2", "temperature", "battery"], "co2", 24)
+    kb = build_keyboard(S, ["AA"], "AA", ["co2", "temperature", "battery"], "co2", 24, owner=7)
     assert texts(kb) == [["• CO₂ •", "Темп."], ["6 ч", "• 24 ч •", "7 д"], ["🔄 Обновить"]]
     data = ClimateCb.unpack(kb.inline_keyboard[1][2].callback_data)
-    assert (data.mac, data.metric, data.hours) == ("AA", "co2", 168)
+    assert (data.mac, data.metric, data.hours, data.owner) == ("AA", "co2", 168, 7)
 
 
 def test_keyboard_two_devices():
-    kb = build_keyboard(S, ["AA", "BB"], "BB", ["co2"], "co2", 6)
+    kb = build_keyboard(S, ["AA", "BB"], "BB", ["co2"], "co2", 6, owner=7)
     assert texts(kb)[0] == ["Датчик AA", "• Датчик BB •"]
 
 
@@ -40,7 +40,7 @@ def fill(store: Store, mac: str, values: dict, count: int = 10) -> float:
 async def test_build_view_with_data():
     store = Store(":memory:")
     now = fill(store, "AA", {"co2": 700.0, "temperature": 22.0})
-    view = await build_view(S, store, now=now)
+    view = await build_view(S, store, now=now, owner=7)
     assert view.photo[:4] == b"\x89PNG"
     assert "CO₂" in view.text
     assert texts(view.keyboard)[0] == ["• CO₂ •", "Темп."]
@@ -49,7 +49,7 @@ async def test_build_view_with_data():
 async def test_build_view_falls_back_to_available_metric_and_device():
     store = Store(":memory:")
     now = fill(store, "AA", {"temperature": 22.0})
-    view = await build_view(S, store, mac="ZZ", metric="co2", now=now)
+    view = await build_view(S, store, mac="ZZ", metric="co2", now=now, owner=7)
     assert texts(view.keyboard)[0] == ["• Темп. •"]
 
 
@@ -62,7 +62,7 @@ async def test_build_view_no_data():
 async def test_build_view_one_point_has_no_photo():
     store = Store(":memory:")
     now = fill(store, "AA", {"co2": 700.0}, count=1)
-    view = await build_view(S, store, now=now)
+    view = await build_view(S, store, now=now, owner=7)
     assert view.photo is None and view.keyboard is not None
 
 
@@ -77,7 +77,7 @@ async def test_send_view():
 
 
 def test_keyboard_devices_sorted_by_mac():
-    kb = build_keyboard(S, ["BB", "AA"], "BB", ["co2"], "co2", 6)
+    kb = build_keyboard(S, ["BB", "AA"], "BB", ["co2"], "co2", 6, owner=7)
     assert texts(kb)[0] == ["Датчик AA", "• Датчик BB •"]
 
 
@@ -86,10 +86,10 @@ async def test_build_view_defaults_to_freshest_sensor():
     now = time.time()
     store.add([Reading("AA", int(now) - 60, {"co2": 700.0})])
     store.add([Reading("ZZ", int(now) - 3 * 86400, {"co2": 500.0})])
-    view = await build_view(S, store, now=now)
+    view = await build_view(S, store, now=now, owner=7)
     assert texts(view.keyboard)[0] == ["• Датчик AA •", "Датчик ZZ"]
     store.add([Reading("ZZ", int(now), {"co2": 500.0})])
-    view = await build_view(S, store, now=now)
+    view = await build_view(S, store, now=now, owner=7)
     assert texts(view.keyboard)[0] == ["Датчик AA", "• Датчик ZZ •"]
 
 
@@ -141,3 +141,16 @@ async def test_edit_view_failed_send_in_type_change_is_not_retried():
         await edit_view(message, View("text", b"png", None))
     assert message.bot.send_photo.await_count == 1
     message.delete.assert_not_awaited()
+
+
+async def test_build_view_without_owner_has_no_buttons():
+    # The morning report has no author, so nobody can change it for everyone.
+    store = Store(":memory:")
+    now = fill(store, "AA", {"co2": 700.0})
+    view = await build_view(S, store, now=now)
+    assert view.keyboard is None and view.photo is not None
+
+
+def test_callback_data_fits_telegram_limit():
+    cb = ClimateCb(mac="582D34AABBCC", metric="tvoc_index", hours=168, owner=-1001234567890123)
+    assert len(cb.pack().encode()) <= 64
