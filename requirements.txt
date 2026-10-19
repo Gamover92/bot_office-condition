@@ -1,2 +1,4 @@
 aiogram==3.31.0
 aiomqtt==2.5.1
+matplotlib==3.11.2
+tzdata==2026.5
