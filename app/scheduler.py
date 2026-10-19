@@ -71,8 +71,13 @@ async def tick(
             log.warning("No access to chat %s: alerts and report are now off", chat_id)
             chats.disable(chat_id)
         except TelegramMigrateToChat as exc:
-            log.info("Chat %s moved to %s", chat_id, exc.migrate_to_chat_id)
-            chats.migrate(chat_id, exc.migrate_to_chat_id)
+            new_id = exc.migrate_to_chat_id
+            log.warning(
+                "Group %s became a supergroup with ID %s: replace the old ID with the new one in ALLOWED_CHAT_IDS",
+                chat_id,
+                new_id,
+            )
+            chats.migrate(chat_id, new_id, overwrite=False)
         except Exception:
             log.exception("Scheduler failed for chat %s", chat_id)
 

@@ -121,3 +121,29 @@ def test_migrate_moves_all_tables():
     assert store.alert_states(-1, "AA") == {}
     assert store.last_report(-100) == "2026-10-19"
     assert store.last_report(-1) is None
+
+
+def test_migrate_without_overwrite_keeps_existing_new_chat():
+    store = make_store()
+    store.update(-100, co2_max=900, alerts=False)
+    store.save_alert_states(-100, "AA", {"co2": AlertState("bad", "bad")})
+    store.mark_report(-100, "2026-10-19")
+    store.register(-1)
+    store.save_alert_states(-1, "AA", {"co2": AlertState("ok", "ok")})
+    store.mark_report(-1, "2026-10-18")
+    store.migrate(-1, -100, overwrite=False)
+    assert store.chats() == [-100]
+    assert store.get(-100).co2_max == 900
+    assert store.get(-100).alerts is False
+    assert store.alert_states(-100, "AA") == {"co2": AlertState("bad", "bad")}
+    assert store.alert_states(-1, "AA") == {}
+    assert store.last_report(-100) == "2026-10-19"
+    assert store.last_report(-1) is None
+
+
+def test_migrate_without_overwrite_moves_when_new_chat_is_unknown():
+    store = make_store()
+    store.update(-1, co2_max=900)
+    store.migrate(-1, -100, overwrite=False)
+    assert store.chats() == [-100]
+    assert store.get(-100).co2_max == 900

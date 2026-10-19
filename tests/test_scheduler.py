@@ -121,3 +121,23 @@ async def test_migrated_chat_is_moved():
     await tick(bot, S, store, chats, now)
     assert chats.chats() == [-100]
     assert chats.get(-100).co2_max == 1000
+
+
+async def test_migration_does_not_overwrite_new_chat_settings():
+    store, chats, now = setup(1300)  # chat 1 is registered with defaults
+    chats.register(-1)
+    chats.update(-100, co2_max=900, alerts=False)
+    bot = AsyncMock()
+
+    async def send(chat_id, text, **kwargs):
+        if chat_id == -1:
+            raise TelegramMigrateToChat(
+                method=SendMessage(chat_id=-1, text="x"), message="group upgraded", migrate_to_chat_id=-100
+            )
+
+    bot.send_message.side_effect = send
+    store.db.execute("DELETE FROM chat_settings WHERE chat_id=1")
+    await tick(bot, S, store, chats, now)
+    assert chats.get(-100).co2_max == 900
+    assert chats.get(-100).alerts is False
+    assert -1 not in chats.chats()

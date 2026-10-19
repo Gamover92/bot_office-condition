@@ -180,8 +180,19 @@ class ChatStore:
         self.db.execute("INSERT OR REPLACE INTO report_log (chat_id, date) VALUES (?, ?)", (chat_id, date))
         self.db.commit()
 
-    def migrate(self, old_id: int, new_id: int) -> None:
-        """Move a chat to its new ID (group upgraded to supergroup). Old rows replace the new ones."""
+    def migrate(self, old_id: int, new_id: int, overwrite: bool = True) -> None:
+        """Move a chat to its new ID (group upgraded to supergroup).
+
+        With overwrite=True the old rows replace the new chat's rows. With overwrite=False an
+        existing new chat keeps its rows and the old chat's rows are deleted.
+        """
+        tables = ("chat_settings", "alert_state", "report_log")
         with self.db:
-            for table in ("chat_settings", "alert_state", "report_log"):
+            if not overwrite and self.db.execute(
+                "SELECT 1 FROM chat_settings WHERE chat_id=?", (new_id,)
+            ).fetchone():
+                for table in tables:
+                    self.db.execute(f"DELETE FROM {table} WHERE chat_id=?", (old_id,))
+                return
+            for table in tables:
                 self.db.execute(f"UPDATE OR REPLACE {table} SET chat_id=? WHERE chat_id=?", (new_id, old_id))
