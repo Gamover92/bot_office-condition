@@ -78,5 +78,8 @@ async def run_scheduler(
     bot: Bot, settings: Settings, store: Store, chats: ChatStore, interval: float = 60
 ) -> None:
     while True:
-        await tick(bot, settings, store, chats)
+        try:
+            await tick(bot, settings, store, chats)
+        except Exception:
+            log.exception("Scheduler tick failed")
         await asyncio.sleep(interval)

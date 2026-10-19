@@ -1,11 +1,13 @@
-import sqlite3
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
+import pytest
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import SendMessage
 
+from app import scheduler
 from app.chat_settings import ChatConfig, ChatStore
 from app.config import Settings
 from app.qingping import Reading
@@ -92,3 +94,18 @@ async def test_error_in_one_chat_does_not_stop_others():
     bot.send_message.side_effect = [RuntimeError("boom"), None]
     await tick(bot, S, store, chats, now)
     assert bot.send_message.await_count == 2
+
+
+async def test_run_scheduler_survives_tick_error(monkeypatch):
+    calls = 0
+
+    async def flaky_tick(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("chats() failed")
+
+    monkeypatch.setattr(scheduler, "tick", flaky_tick)
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(scheduler.run_scheduler(AsyncMock(), S, None, None, interval=0.01), 0.2)
+    assert calls >= 2

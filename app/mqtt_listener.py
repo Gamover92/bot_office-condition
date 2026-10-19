@@ -14,6 +14,19 @@ from .store import Store
 log = logging.getLogger(__name__)
 
 
+def handle_message(store: Store, topic: str, payload: bytes | str) -> int:
+    """Parse and save one message. Return the number of saved readings (0 on error)."""
+    try:
+        readings = parse_message(topic, payload)
+        if readings:
+            store.add(readings)
+            log.debug("Saved %d reading(s) from %s", len(readings), topic)
+        return len(readings)
+    except Exception:
+        log.exception("Failed to handle MQTT message from %s", topic)
+        return 0
+
+
 async def run_mqtt(settings: Settings, store: Store) -> None:
     while True:
         try:
@@ -27,10 +40,7 @@ async def run_mqtt(settings: Settings, store: Store) -> None:
                 await client.subscribe(settings.mqtt_topic)
                 log.info("MQTT connected, topic %s", settings.mqtt_topic)
                 async for message in client.messages:
-                    readings = parse_message(str(message.topic), message.payload)
-                    if readings:
-                        store.add(readings)
-                        log.debug("Saved %d reading(s) from %s", len(readings), message.topic)
+                    handle_message(store, str(message.topic), message.payload)
         except aiomqtt.MqttError as exc:
             log.warning("MQTT error: %s. Reconnect in 5 s.", exc)
             await asyncio.sleep(5)

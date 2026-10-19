@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import os
 
@@ -26,8 +25,19 @@ log = logging.getLogger("office_climate")
 
 async def prune_loop(store: Store, days: int) -> None:
     while True:
-        store.prune(days)
+        try:
+            store.prune(days)
+        except Exception:
+            log.exception("Prune failed")
         await asyncio.sleep(3600)
+
+
+def on_task_done(task: asyncio.Task) -> None:
+    """A background task must run forever: if it fails, exit so Docker restarts the bot."""
+    if task.cancelled() or task.exception() is None:
+        return
+    log.critical("Background task %s failed, exiting", task.get_name(), exc_info=task.exception())
+    os._exit(1)
 
 
 async def main() -> None:
@@ -65,14 +75,15 @@ async def main() -> None:
         asyncio.create_task(prune_loop(store, settings.history_days)),
         asyncio.create_task(run_scheduler(bot, settings, store, chats)),
     ]
+    for task in background:
+        task.add_done_callback(on_task_done)
     try:
         await dp.start_polling(bot)
     finally:
         for task in background:
+            task.remove_done_callback(on_task_done)
             task.cancel()
-        for task in background:
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        await asyncio.gather(*background, return_exceptions=True)
         await bot.session.close()
 
 
