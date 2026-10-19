@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 import pytest
-from aiogram.exceptions import TelegramForbiddenError, TelegramMigrateToChat
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramMigrateToChat
 from aiogram.methods import SendMessage
 
 from app import scheduler
@@ -75,6 +75,20 @@ async def test_forbidden_disables_chat():
     await tick(bot, S, store, chats, now)
     cfg = chats.get(1)
     assert cfg.alerts is False and cfg.report is False
+
+
+async def test_chat_not_found_forgets_chat():
+    store, chats, now = setup(1300)
+    chats.update(1, co2_max=1000)
+    bot = AsyncMock()
+    bot.send_message.side_effect = TelegramBadRequest(
+        method=SendMessage(chat_id=1, text="x"), message="Bad Request: chat not found"
+    )
+    await tick(bot, S, store, chats, now)
+    assert chats.chats() == []
+    assert chats.get(1).co2_max == 1200  # settings rows are gone too
+    await tick(bot, S, store, chats, now + 60)
+    bot.send_message.assert_awaited_once()  # not retried every minute
 
 
 async def test_morning_report_once():

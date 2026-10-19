@@ -184,6 +184,12 @@ class ChatStore:
         self.db.execute("DELETE FROM report_log WHERE chat_id=?", (chat_id,))
         self.db.commit()
 
+    def forget(self, chat_id: int) -> None:
+        """Delete all rows of a chat. Using the bot there registers it again."""
+        with self.db:
+            for table in ("chat_settings", "alert_state", "report_log"):
+                self.db.execute(f"DELETE FROM {table} WHERE chat_id=?", (chat_id,))
+
     def migrate(self, old_id: int, new_id: int, overwrite: bool = True) -> None:
         """Move a chat to its new ID (group upgraded to supergroup).
 

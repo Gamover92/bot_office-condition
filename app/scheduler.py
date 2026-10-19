@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramForbiddenError, TelegramMigrateToChat
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramMigrateToChat
 
 from .alerts import in_quiet_hours, step
 from .chat_settings import ChatConfig, ChatStore
@@ -83,6 +83,18 @@ async def tick(
                 new_id,
             )
             chats.migrate(chat_id, new_id, overwrite=False)
+        except TelegramBadRequest as exc:
+            if "chat not found" not in str(exc):
+                log.exception("Scheduler failed for chat %s", chat_id)
+                continue
+            # A wrong ID in ALLOWED_CHAT_IDS, or the bot is not in the chat yet. Forget the chat
+            # so it is not retried every minute; a restart or a message there registers it again.
+            log.warning(
+                "Chat %s not found: check ALLOWED_CHAT_IDS (a supergroup ID starts with -100) "
+                "and that the bot is a member of the chat",
+                chat_id,
+            )
+            chats.forget(chat_id)
         except Exception:
             log.exception("Scheduler failed for chat %s", chat_id)
 

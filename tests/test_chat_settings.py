@@ -97,6 +97,19 @@ def test_disable_and_register_keeps_settings():
     assert cfg.alerts is False and cfg.report is False
 
 
+def test_forget_removes_all_rows():
+    store = make_store()
+    store.update(1, co2_max=900)
+    store.save_alert_states(1, "AA", {"co2": AlertState("bad", "bad")})
+    store.mark_report(1, "2026-10-19")
+    store.update(2, co2_max=800)
+    store.forget(1)
+    assert store.chats() == [2]
+    assert store.alert_states(1, "AA") == {}
+    assert store.last_report(1) is None
+    assert store.get(2).co2_max == 800
+
+
 def test_alert_states_and_report_log():
     store = make_store()
     assert store.alert_states(1, "AA") == {}
