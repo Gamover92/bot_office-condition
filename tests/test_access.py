@@ -1,10 +1,11 @@
 import sqlite3
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import GetChatMember
+from aiogram.types import Message
 
 from app.access import AccessMiddleware, AdminChecker
 from app.chat_settings import ChatConfig, ChatStore
@@ -75,3 +76,17 @@ async def test_middleware_passes_migration_service_message():
     result = await AccessMiddleware(LIMITED, chats)(handler, event, data(1, 2))
     assert result == "ok"
     assert chats.chats() == []  # the chat is not registered
+
+
+async def test_middleware_ignores_new_supergroup_service_message():
+    chats = ChatStore(sqlite3.connect(":memory:"), ChatConfig())
+    handler = AsyncMock()
+    event = MagicMock(spec=Message)
+    event.migrate_from_chat_id = -1
+    event.migrate_to_chat_id = None
+    event.answer = AsyncMock()
+    result = await AccessMiddleware(LIMITED, chats)(handler, event, data(1, -200))
+    assert result is None
+    handler.assert_not_awaited()
+    event.answer.assert_not_awaited()
+    assert chats.chats() == []

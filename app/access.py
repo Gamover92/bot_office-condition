@@ -34,6 +34,9 @@ class AccessMiddleware(BaseMiddleware):
             # Telegram's service message about a group upgrade. The handler sends nothing
             # and only moves rows of a chat that is already registered (so it was allowed).
             return await handler(event, data)
+        if getattr(event, "migrate_from_chat_id", None):
+            # Service message in the new supergroup: nothing to do, and no "no access" reply.
+            return None
         user = data.get("event_from_user")
         chat = data.get("event_chat")
         user_id = user.id if user else None
