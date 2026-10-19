@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -10,7 +12,18 @@ from ..config import Settings
 from ..store import Store
 from ..view import ClimateCb, build_view, edit_view, send_view
 
-KEYWORDS = {"климат", "душно?", "душно"}
+KEYWORDS = {"климат", "душно", "душновато"}
+# Words allowed next to a keyword: "душно-то как", "как душно в офисе". "не" is not here,
+# so "тут не душно" does not trigger the bot.
+FILLER = {"то", "как", "же", "так", "очень", "что", "тут", "здесь", "у", "нас", "в", "офисе", "сегодня"}
+
+
+def is_keyword(text: str) -> bool:
+    """A short message that asks about the climate. Case, punctuation and emoji do not matter."""
+    words = re.findall(r"[а-яё]+", text.lower())
+    return any(w in KEYWORDS for w in words) and all(w in KEYWORDS or w in FILLER for w in words)
+
+
 GREETING = (
     "Привет! Я показываю климат в офисе с датчиков Qingping.\n"
     "/climate — сводка и график, /settings — уведомления и утренний отчёт (для админов)."
@@ -32,7 +45,7 @@ def build_router(settings: Settings, store: Store) -> Router:
     async def climate(message: Message, bot: Bot) -> None:
         await show(message, bot)
 
-    @router.message(F.text.lower().in_(KEYWORDS))
+    @router.message(F.text.func(is_keyword))
     async def keyword(message: Message, bot: Bot) -> None:
         await show(message, bot)
 
