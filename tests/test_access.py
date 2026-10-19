@@ -37,8 +37,9 @@ async def test_middleware_blocks():
 async def test_admin_in_private_chat():
     checker = AdminChecker(LIMITED)
     bot = AsyncMock()
-    assert await checker.is_admin(bot, 7, "private", 7)
-    assert not await checker.is_admin(bot, 8, "private", 8)
+    assert await checker.is_admin(bot, 8, "private", 8)  # owner of the private chat
+    assert await checker.is_admin(bot, 9, "private", 7)  # in ADMIN_USER_IDS
+    assert not await checker.is_admin(bot, 9, "private", 8)
     bot.get_chat_member.assert_not_awaited()
 
 

@@ -66,7 +66,7 @@ async def main() -> None:
     await bot.set_my_commands(
         [
             BotCommand(command="climate", description="Климат в офисе: сводка и график"),
-            BotCommand(command="settings", description="Уведомления и отчёт (для админов)"),
+            BotCommand(command="settings", description="Уведомления и отчёт"),
         ]
     )
 

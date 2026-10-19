@@ -44,10 +44,13 @@ Qingping Air Monitor ──MQTT──▶ mosquitto (порт 1883, только 
 git clone <этот репозиторий> office-climate
 cd office-climate
 cp .env.example .env
-# откройте .env и впишите BOT_TOKEN, при желании ALLOWED_CHAT_IDS и ADMIN_USER_IDS
+# откройте .env и впишите BOT_TOKEN и ALLOWED_CHAT_IDS (или ALLOWED_USER_IDS)
 docker compose up -d --build
 docker compose logs -f bot
 ```
+
+**Обязательно задайте `ALLOWED_CHAT_IDS` (или `ALLOWED_USER_IDS`).** Если оба списка пустые,
+данные из офиса может прочитать любой пользователь Telegram, который найдёт бота.
 
 В логе должно быть `MQTT connected`. Порт 1883 должен быть доступен из офисной сети
 (на Windows разрешите его в брандмауэре). У ПК должен быть постоянный IP в локальной сети
@@ -99,8 +102,8 @@ docker compose exec mosquitto mosquitto_pub -t qingping/582D34000000/up -m \
 
 | Переменная | Что значит |
 |---|---|
-| `ALLOWED_CHAT_IDS`, `ALLOWED_USER_IDS` | Где и кому бот отвечает. Пусто = всем |
-| `ADMIN_USER_IDS` | Кто меняет `/settings` в личке с ботом. В группах — админы группы |
+| `ALLOWED_CHAT_IDS`, `ALLOWED_USER_IDS` | Где и кому бот отвечает. **Задайте обязательно**: пусто = любому пользователю Telegram |
+| `ADMIN_USER_IDS` | Кто ещё может менять `/settings` в личке с ботом. В личном чате каждый пользователь сам управляет своими уведомлениями и отчётом. В группах `/settings` меняют админы группы |
 | `DEVICE_NAMES` | Имена датчиков: `MAC=Имя;MAC=Имя` |
 | `TZ` | Часовой пояс |
 | `STALE_AFTER_MIN` | Через сколько минут без данных они считаются устаревшими |
