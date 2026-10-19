@@ -73,7 +73,8 @@ Keep from the WIP draft: `qingping.py`, `store.py`, `config.py`, `mqtt_listener.
 
 - `readings(mac, ts, data JSON)`, primary key `(mac, ts)`. Rows older than `HISTORY_DAYS` (default 30) are deleted each hour.
 - `chat_settings(chat_id, data JSON)`. Only the values that differ from the defaults are stored.
-- `alert_state(chat_id, mac, metric, state, pending)`. `state` is `ok` or `bad`. `pending` marks a change that waits for the end of quiet hours.
+- `alert_state(chat_id, mac, metric, state, sent)`. `state` is the current `ok` or `bad`. `sent` is the state of the last message sent to the chat. If `state` differs from `sent`, a message waits (for example, during quiet hours).
+- A chat is registered (a row in `chat_settings`) when someone uses the bot in it. Chats from `ALLOWED_CHAT_IDS` are always registered.
 - `report_log(chat_id, date)`. The date of the last morning report.
 
 ## 5. User flows
@@ -115,7 +116,7 @@ The scheduler runs each minute. For each chat with alerts on, for each sensor an
 
 - At the time that you set (default 09:00), on the days that you set (default Mon–Fri), in `TZ`.
 - It has the same content as `/climate`, with the CO₂ chart for the last 12 h.
-- `report_log` makes sure that the bot sends the report once per day, also after a restart. If the bot was off at the report time, it sends the report when it starts, if the time is before 12:00.
+- `report_log` makes sure that the bot sends the report once per day, also after a restart. If the bot was off at the report time, it sends the report when it starts, if the time is before 12:00. If the report time is 12:00 or later, the catch-up period is 10 minutes after the report time.
 
 ### `/settings` (chat admins only)
 
