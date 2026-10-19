@@ -1,7 +1,7 @@
 import json
 import time
 
-from app.qingping import parse_message
+from app.qingping import Reading, parse_message
 from app.store import Store
 from tests.test_qingping import QINGPING_MSG
 
@@ -35,3 +35,17 @@ def test_store_history_and_prune():
 
 def test_latest_unknown_device():
     assert Store(":memory:").latest("NOPE") is None
+
+
+def test_devices_newest_reading_first():
+    store = Store(":memory:")
+    store.add([Reading("AA", 100, {"co2": 1}), Reading("BB", 300, {"co2": 1}), Reading("CC", 200, {"co2": 1})])
+    assert store.devices() == ["BB", "CC", "AA"]
+
+
+def test_delete_device():
+    store = Store(":memory:")
+    store.add([Reading("AA", 100, {"co2": 1}), Reading("AA", 200, {"co2": 2}), Reading("BB", 100, {"co2": 3})])
+    store.delete_device("AA")
+    assert store.devices() == ["BB"]
+    assert store.latest("AA") is None

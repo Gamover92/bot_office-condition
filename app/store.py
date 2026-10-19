@@ -37,7 +37,13 @@ class Store:
         self.db.commit()
 
     def devices(self) -> list[str]:
-        return [r[0] for r in self.db.execute("SELECT DISTINCT mac FROM readings ORDER BY mac")]
+        """MACs, the device with the newest reading first."""
+        rows = self.db.execute("SELECT mac FROM readings GROUP BY mac ORDER BY MAX(ts) DESC, mac")
+        return [r[0] for r in rows]
+
+    def delete_device(self, mac: str) -> None:
+        self.db.execute("DELETE FROM readings WHERE mac=?", (mac,))
+        self.db.commit()
 
     def latest(self, mac: str) -> Reading | None:
         """Newest value of each metric, with the newest timestamp."""

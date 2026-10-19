@@ -63,7 +63,8 @@ def build_keyboard(
 ) -> InlineKeyboardMarkup:
     rows = []
     if len(macs) > 1:
-        rows.append([_button(device_name(settings, m), m, metric, hours, m == mac) for m in macs])
+        # Stable button order for the user; the default device is chosen by the caller.
+        rows.append([_button(device_name(settings, m), m, metric, hours, m == mac) for m in sorted(macs)])
     chartable = [m for m in CHART_METRICS if m in metrics]
     for i in range(0, len(chartable), 4):
         rows.append([_button(SHORT[m], mac, m, hours, m == metric) for m in chartable[i : i + 4]])

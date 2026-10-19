@@ -89,9 +89,9 @@ The bot sends one photo with a caption and buttons:
 - **Buttons:**
   - Metrics: only the metrics that the sensor sends.
   - Period: 6 h / 24 h / 7 d.
-  - Sensors: only if there are 2 or more.
+  - Sensors: only if there are 2 or more, sorted by MAC.
   - "🔄 Обновить".
-- **Default chart:** CO₂, 24 h.
+- **Default chart:** CO₂, 24 h, for the sensor with the newest data. `scripts/forget-sensor.sh <MAC>` deletes a sensor's data (for example, the test sensor from the README).
 
 A button push edits the same message (photo and caption), so the bot does not send a new message. The callback data holds the sensor, the metric and the period.
 

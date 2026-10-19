@@ -70,3 +70,20 @@ async def test_send_view():
     assert args.kwargs["caption"] == "text"
     await send_view(bot, 5, View("only text", None, None))
     bot.send_message.assert_awaited_once_with(5, "only text", reply_markup=None)
+
+
+def test_keyboard_devices_sorted_by_mac():
+    kb = build_keyboard(S, ["BB", "AA"], "BB", ["co2"], "co2", 6)
+    assert texts(kb)[0] == ["Датчик AA", "• Датчик BB •"]
+
+
+async def test_build_view_defaults_to_freshest_sensor():
+    store = Store(":memory:")
+    now = time.time()
+    store.add([Reading("AA", int(now) - 60, {"co2": 700.0})])
+    store.add([Reading("ZZ", int(now) - 3 * 86400, {"co2": 500.0})])
+    view = await build_view(S, store, now=now)
+    assert texts(view.keyboard)[0] == ["• Датчик AA •", "Датчик ZZ"]
+    store.add([Reading("ZZ", int(now), {"co2": 500.0})])
+    view = await build_view(S, store, now=now)
+    assert texts(view.keyboard)[0] == ["Датчик AA", "• Датчик ZZ •"]
