@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Env names for the default chat settings. app.chat_settings parses them.
 CHAT_ENV_KEYS = (
@@ -55,6 +56,11 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         e = os.environ.get
+        tz = e("TZ", "Europe/Moscow")
+        try:
+            ZoneInfo(tz)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise SystemExit(f"Unknown TZ: {tz}") from None
         return cls(
             bot_token=e("BOT_TOKEN", ""),
             allowed_chats=_int_set(e("ALLOWED_CHAT_IDS", "")),
@@ -69,7 +75,7 @@ class Settings:
             db_path=e("DB_PATH", "/data/climate.db"),
             history_days=int(e("HISTORY_DAYS", "30")),
             stale_after_min=int(e("STALE_AFTER_MIN", "30")),
-            tz=e("TZ", "Europe/Moscow"),
+            tz=tz,
             chat_defaults={k: v for k in CHAT_ENV_KEYS if (v := e(k, ""))},
         )
 

@@ -61,3 +61,8 @@ async def test_group_member_and_error_are_not_admin():
         method=GetChatMember(chat_id=-100, user_id=2), message="user not found"
     )
     assert not await checker.is_admin(bot, -100, "group", 2)
+    # An error is not cached: the next call asks the API again.
+    bot.get_chat_member.side_effect = None
+    bot.get_chat_member.return_value = SimpleNamespace(status=ChatMemberStatus.CREATOR)
+    assert await checker.is_admin(bot, -100, "group", 2)
+    assert bot.get_chat_member.await_count == 3

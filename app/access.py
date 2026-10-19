@@ -60,8 +60,8 @@ class AdminChecker:
             return cached[1]
         try:
             member = await bot.get_chat_member(chat_id, user_id)
-            ok = member.status in ADMIN_STATUSES
         except TelegramAPIError:
-            ok = False
+            return False  # not cached: the next call asks again
+        ok = member.status in ADMIN_STATUSES
         self.cache[key] = (time.monotonic(), ok)
         return ok

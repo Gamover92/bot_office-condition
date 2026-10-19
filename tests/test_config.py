@@ -32,3 +32,9 @@ def test_is_allowed():
     assert s.is_allowed(1, -100)
     assert not s.is_allowed(1, 2)
     assert not s.is_allowed(None, None)
+
+
+def test_from_env_rejects_unknown_tz(clean_env):
+    clean_env.setenv("TZ", "Mars/Olympus")
+    with pytest.raises(SystemExit, match="Unknown TZ: Mars/Olympus"):
+        Settings.from_env()

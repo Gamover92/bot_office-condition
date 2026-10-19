@@ -2,6 +2,11 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2.0.20
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     ports:
       - "1883:1883"   # Qingping devices connect here (office PC IP)
     volumes:
@@ -11,6 +16,11 @@ services:
   bot:
     build: .
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file: .env
     environment:
       MQTT_HOST: mosquitto

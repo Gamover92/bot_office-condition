@@ -1,6 +1,7 @@
+import re
 import sqlite3
 
-from app.mqtt_listener import handle_message
+from app.mqtt_listener import client_id, handle_message
 from app.store import Store
 
 PAYLOAD = b'{"mac": "582D34AABBCC", "timestamp": 10, "co2": 500}'
@@ -19,3 +20,9 @@ def test_handle_message_survives_store_error(caplog):
 
     assert handle_message(BrokenStore(), "qingping/582D34AABBCC/up", PAYLOAD) == 0
     assert "database is locked" in caplog.text
+
+
+def test_client_id_is_unique():
+    first, second = client_id(), client_id()
+    assert re.fullmatch(r"office-climate-bot-[0-9a-f]{6}", first)
+    assert first != second

@@ -154,7 +154,7 @@ The 🟢🟡🔴 rating in the summary uses the stricter comfort scale from `qin
 ## 6. Access
 
 - `ALLOWED_CHAT_IDS`, `ALLOWED_USER_IDS`: the bot replies only in these chats or to these users. Empty lists mean everyone has access.
-- Settings in a group: the user must be a group admin (`getChatMember`, cached for 5 min).
+- Settings in a group: the user must be a group admin (`getChatMember`, cached for 5 min; a failed lookup is not cached).
 - Settings in a private chat: the user who owns the chat (`user_id == chat_id`) or a user in `ADMIN_USER_IDS` is an admin. So each user manages alerts and the report for their own private chat.
 - Set `ALLOWED_CHAT_IDS` or `ALLOWED_USER_IDS` in production: with empty lists, any Telegram user can read the office data.
 - A user who is not an admin pushes a settings button: the bot shows the popup "Только для админов".

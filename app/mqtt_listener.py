@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 
 import aiomqtt
 
@@ -12,6 +13,11 @@ from .qingping import parse_message
 from .store import Store
 
 log = logging.getLogger(__name__)
+
+
+def client_id() -> str:
+    # A unique ID: two bot instances with the same ID would disconnect each other.
+    return f"office-climate-bot-{secrets.token_hex(3)}"
 
 
 def handle_message(store: Store, topic: str, payload: bytes | str) -> int:
@@ -35,7 +41,7 @@ async def run_mqtt(settings: Settings, store: Store) -> None:
                 port=settings.mqtt_port,
                 username=settings.mqtt_user or None,
                 password=settings.mqtt_password or None,
-                identifier="office-climate-bot",
+                identifier=client_id(),
             ) as client:
                 await client.subscribe(settings.mqtt_topic)
                 log.info("MQTT connected, topic %s", settings.mqtt_topic)
