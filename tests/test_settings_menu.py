@@ -1,7 +1,15 @@
-import pytest
+import sqlite3
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from app.chat_settings import ChatConfig
-from app.handlers.settings import SetCb, menu_keyboard, menu_text, parse_input, toggle_changes
+import pytest
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import ForceReply, Message
+
+from app.chat_settings import ChatConfig, ChatStore
+from app.handlers.settings import EditValue, SetCb, build_router, menu_keyboard, menu_text, parse_input, toggle_changes
 
 
 def test_menu_text_shows_values():
@@ -41,3 +49,39 @@ def test_parse_input():
         parse_input("temp", "26-19")
     with pytest.raises(ValueError):
         parse_input("unknown", "1")
+
+
+def _handler_env():
+    admins = SimpleNamespace(is_admin=AsyncMock(return_value=True))
+    router = build_router(ChatStore(sqlite3.connect(":memory:"), ChatConfig()), admins)
+    on_button = next(h for h in router.callback_query.handlers if h.callback.__name__ == "on_button").callback
+    msg = AsyncMock(spec=Message)
+    msg.chat = SimpleNamespace(id=5, type="supergroup")  # pydantic fields are not visible to spec
+    msg.message_id = 1
+    msg.answer, msg.edit_text = AsyncMock(), AsyncMock()
+    query = AsyncMock()
+    query.message = msg
+    query.from_user.id = 7
+    state = FSMContext(MemoryStorage(), StorageKey(bot_id=1, chat_id=5, user_id=7))
+
+    async def press(action, field=""):
+        await on_button(query=query, callback_data=SetCb(action=action, field=field), bot=AsyncMock(), state=state)
+
+    return msg, state, press
+
+
+async def test_edit_prompt_uses_force_reply():
+    msg, state, press = _handler_env()
+    await press("edit", "co2_max")
+    assert await state.get_state() == EditValue.waiting.state
+    markup = msg.answer.await_args.kwargs["reply_markup"]
+    assert isinstance(markup, ForceReply)
+    assert markup.input_field_placeholder == "1000"
+
+
+@pytest.mark.parametrize("action,field", [("toggle", "alerts"), ("reset", "")])
+async def test_toggle_and_reset_clear_pending_input(action, field):
+    _, state, press = _handler_env()
+    await press("edit", "co2_max")
+    await press(action, field)
+    assert await state.get_state() is None

@@ -11,7 +11,7 @@ from aiogram.filters import Command
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from ..access import AdminChecker
 from ..chat_settings import ChatConfig, ChatStore, parse_number, parse_range, parse_time, parse_time_range
@@ -130,7 +130,13 @@ def build_router(chats: ChatStore, admins: AdminChecker) -> Router:
 
         if action == "close":
             await state.clear()
-            await msg.delete()
+            try:
+                await msg.delete()
+            except TelegramBadRequest:
+                try:
+                    await msg.edit_reply_markup(reply_markup=None)
+                except TelegramBadRequest:
+                    pass
             await query.answer()
             return
         if action == "edit" and field in FIELDS:
@@ -138,11 +144,16 @@ def build_router(chats: ChatStore, admins: AdminChecker) -> Router:
             await state.set_state(EditValue.waiting)
             await state.update_data(field=field, started=time.time())
             await query.answer()
-            await msg.answer(f"Введите {title}. Пример: <code>{example}</code>")
+            await msg.answer(
+                f"Введите {title}. Пример: <code>{example}</code>",
+                reply_markup=ForceReply(input_field_placeholder=example),
+            )
             return
         if action == "toggle" and field in TOGGLES:
+            await state.clear()
             cfg = chats.update(chat_id, **toggle_changes(chats.get(chat_id), field))
         elif action == "reset":
+            await state.clear()
             chats.reset(chat_id)
             cfg = chats.get(chat_id)
         else:
