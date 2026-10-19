@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Note (after implementation):** the code samples below are the original plan. Later review fixes changed some details (for example, `ADMIN_USER_IDS` was removed). The spec and the code on the branch are the source of truth.
+
 **Goal:** A Telegram bot shows the office climate from a Qingping Air Monitor (via MQTT). It has a `/climate` summary with a PNG chart and buttons, alerts, a morning report, and a `/settings` menu. Everything runs in Docker on one office PC.
 
 **Architecture:** Two Docker containers: `mosquitto` (MQTT broker in the LAN) and `bot` (Python). The bot saves readings to SQLite and uses long polling, so no inbound ports from the Internet. The modules are small: pure logic (`qingping`, `alerts`, `chat_settings` parsers) is separate from I/O (`store`, `view`, handlers, scheduler), so it is easy to test.
