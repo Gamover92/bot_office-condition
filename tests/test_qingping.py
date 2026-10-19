@@ -1,7 +1,7 @@
 import json
 import time
 
-from app.qingping import advice, overall, parse_message, rate
+from app.qingping import advice, clean, overall, parse_message, rate
 
 QINGPING_MSG = {
     "id": 7,
@@ -92,3 +92,15 @@ def test_parse_readme_test_payload_uses_current_time():
     assert readings[0].mac == "582D34000000"
     assert readings[0].values == {"co2": 1300.0, "temperature": 23.0}
     assert before <= readings[0].ts <= time.time()
+
+
+def test_error_codes_out_of_range_are_dropped():
+    msg = {"mac": "582D34AABBCC", "pm25": 999999999, "pm10": 999999999, "co2": 650, "humidity": 140}
+    readings = parse_message("qingping/582D34AABBCC/up", json.dumps(msg))
+    assert readings[0].values == {"co2": 650}
+
+
+def test_clean_drops_ignored_and_implausible():
+    values = {"pm25": 12, "co2": 700, "temperature": -60}
+    assert clean(values) == {"pm25": 12, "co2": 700}
+    assert clean(values, frozenset({"pm25"})) == {"co2": 700}

@@ -35,6 +35,21 @@ MAC_RE = re.compile(r"[0-9A-F]{12}")
 # Plausible Unix time in seconds (after a milliseconds value is converted).
 MAX_TS = 1e11
 
+# Physically possible ranges. Values outside are sensor error codes (for example 999999999
+# from a PM sensor at the end of its life) and are dropped.
+PLAUSIBLE: dict[str, tuple[float, float]] = {
+    "temperature": (-40, 85),
+    "humidity": (0, 100),
+    "co2": (0, 10000),
+    "pm25": (0, 1000),
+    "pm10": (0, 1000),
+    "tvoc": (0, 100000),
+    "tvoc_index": (0, 500),
+    "noise": (0, 140),
+    "pressure": (30, 120),
+    "battery": (0, 100),
+}
+
 ALIASES = {"pm2.5": "pm25", "pm2_5": "pm25", "temp": "temperature", "hum": "humidity"}
 
 # Upper limits for "good" and "fair"; above "fair" is "bad".
@@ -88,6 +103,15 @@ def _ts(v: Any) -> float | None:
     return ts if 0 < ts < MAX_TS else None
 
 
+def clean(values: dict[str, float], ignored: frozenset[str] = frozenset()) -> dict[str, float]:
+    """Drop ignored metrics and values outside the plausible range."""
+    return {
+        k: v
+        for k, v in values.items()
+        if k not in ignored and (k not in PLAUSIBLE or PLAUSIBLE[k][0] <= v <= PLAUSIBLE[k][1])
+    }
+
+
 def mac_from_topic(topic: str) -> str:
     parts = topic.split("/")
     return parts[1].upper() if len(parts) >= 3 else ""
@@ -124,6 +148,7 @@ def parse_message(topic: str, payload: bytes | str) -> list[Reading]:
                 num = _num(raw)
                 if num is not None:
                     values[key] = num
+        values = clean(values)
         if not values:
             continue
         ts = _ts(sample.get("timestamp")) or msg_ts or time.time()

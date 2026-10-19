@@ -5,7 +5,7 @@ from app.config import CHAT_ENV_KEYS, Settings
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    for key in ("TZ", "ALLOWED_CHAT_IDS", "ALLOWED_USER_IDS", "DEVICE_NAMES", *CHAT_ENV_KEYS):
+    for key in ("TZ", "ALLOWED_CHAT_IDS", "ALLOWED_USER_IDS", "DEVICE_NAMES", "IGNORE_METRICS", *CHAT_ENV_KEYS):
         monkeypatch.delenv(key, raising=False)
     return monkeypatch
 
@@ -36,4 +36,12 @@ def test_is_allowed():
 def test_from_env_rejects_unknown_tz(clean_env):
     clean_env.setenv("TZ", "Mars/Olympus")
     with pytest.raises(SystemExit, match="Unknown TZ: Mars/Olympus"):
+        Settings.from_env()
+
+
+def test_ignore_metrics(clean_env):
+    clean_env.setenv("IGNORE_METRICS", " PM25, pm10 ")
+    assert Settings.from_env().ignored_metrics == {"pm25", "pm10"}
+    clean_env.setenv("IGNORE_METRICS", "pm25,dust")
+    with pytest.raises(SystemExit, match="dust"):
         Settings.from_env()

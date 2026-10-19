@@ -49,7 +49,7 @@ async def main() -> None:
     if not settings.bot_token:
         raise SystemExit("BOT_TOKEN is not set")
 
-    store = Store(settings.db_path)
+    store = Store(settings.db_path, settings.ignored_metrics)
     chats = ChatStore(store.db, defaults_from_env(settings.chat_defaults))
     for chat_id in settings.allowed_chats:
         chats.register(chat_id)

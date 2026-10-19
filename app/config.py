@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .qingping import METRICS
+
 # Env names for the default chat settings. app.chat_settings parses them.
 CHAT_ENV_KEYS = (
     "ALERTS",
@@ -51,6 +53,7 @@ class Settings:
     stale_after_min: int = 30
     tz: str = "Europe/Moscow"
     chat_defaults: dict[str, str] = field(default_factory=dict)
+    ignored_metrics: frozenset[str] = frozenset()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -60,6 +63,9 @@ class Settings:
             ZoneInfo(tz)
         except (ZoneInfoNotFoundError, ValueError):
             raise SystemExit(f"Unknown TZ: {tz}") from None
+        ignored = frozenset(x.strip().lower() for x in e("IGNORE_METRICS", "").split(",") if x.strip())
+        if unknown := ignored - METRICS.keys():
+            raise SystemExit(f"Unknown IGNORE_METRICS: {', '.join(sorted(unknown))}. Known: {', '.join(METRICS)}")
         return cls(
             bot_token=e("BOT_TOKEN", ""),
             allowed_chats=_int_set(e("ALLOWED_CHAT_IDS", "")),
@@ -75,6 +81,7 @@ class Settings:
             stale_after_min=int(e("STALE_AFTER_MIN", "30")),
             tz=tz,
             chat_defaults={k: v for k in CHAT_ENV_KEYS if (v := e(k, ""))},
+            ignored_metrics=ignored,
         )
 
     def is_allowed(self, user_id: int | None, chat_id: int | None = None) -> bool:

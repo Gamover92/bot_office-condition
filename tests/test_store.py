@@ -57,3 +57,14 @@ def test_delete_device_normalises_mac_and_returns_count():
     assert store.delete_device("58:2d:34:aa:bb:cc") == 2
     assert store.devices() == []
     assert store.delete_device("58-2d-34-aa-bb-cc") == 0
+
+
+def test_ignored_metrics_hidden_also_in_old_rows():
+    store = Store(":memory:")
+    store.add([Reading("582D34AABBCC", 100, {"co2": 700, "pm25": 999999999})])  # stored before the fix
+    store.ignored = frozenset({"pm10"})
+    assert store.latest("582D34AABBCC").values == {"co2": 700}  # implausible pm25 dropped on read
+    ignoring = Store(":memory:", ignored=frozenset({"pm25"}))
+    ignoring.add([Reading("582D34AABBCC", 100, {"co2": 700, "pm25": 10})])
+    assert ignoring.latest("582D34AABBCC").values == {"co2": 700}
+    assert ignoring.history("582D34AABBCC", 0)[0].values == {"co2": 700}

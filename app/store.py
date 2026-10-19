@@ -7,11 +7,12 @@ import os
 import sqlite3
 import time
 
-from .qingping import Reading
+from .qingping import Reading, clean
 
 
 class Store:
-    def __init__(self, path: str):
+    def __init__(self, path: str, ignored: frozenset[str] = frozenset()):
+        self.ignored = ignored
         if path != ":memory:":
             os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -26,6 +27,9 @@ class Store:
     def add(self, readings: list[Reading]) -> None:
         # Devices can send one sample as several partial messages: merge them.
         for r in readings:
+            r = Reading(r.mac, r.ts, clean(r.values, self.ignored))
+            if not r.values:
+                continue
             row = self.db.execute(
                 "SELECT data FROM readings WHERE mac=? AND ts=?", (r.mac, r.ts)
             ).fetchone()
@@ -57,14 +61,18 @@ class Store:
             return None
         values: dict[str, float] = {}
         for _, data in reversed(rows):
-            values.update(json.loads(data))
+            values.update(self._load(data))
         return Reading(mac=mac, ts=rows[0][0], values=values)
 
     def history(self, mac: str, since: int) -> list[Reading]:
         rows = self.db.execute(
             "SELECT ts, data FROM readings WHERE mac=? AND ts>=? ORDER BY ts", (mac, since)
         )
-        return [Reading(mac=mac, ts=ts, values=json.loads(d)) for ts, d in rows]
+        return [Reading(mac=mac, ts=ts, values=self._load(d)) for ts, d in rows]
+
+    def _load(self, data: str) -> dict[str, float]:
+        # Also cleans rows saved before a metric was ignored or a range check existed.
+        return clean(json.loads(data), self.ignored)
 
     def prune(self, keep_days: int) -> None:
         self.db.execute("DELETE FROM readings WHERE ts < ?", (int(time.time()) - keep_days * 86400,))
