@@ -1,0 +1,2 @@
+aiogram==3.31.0
+aiomqtt==2.5.1

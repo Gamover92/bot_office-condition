@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Климат в офисе</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main id="app">
+    <header class="top">
+      <div>
+        <h1>Климат в офисе</h1>
+        <p id="updated" class="muted">Загрузка…</p>
+      </div>
+      <button id="refresh" class="icon-btn" aria-label="Обновить">↻</button>
+    </header>
+
+    <nav id="devices" class="chips" hidden></nav>
+
+    <section id="hero" class="hero skeleton">
+      <div class="hero-dot"></div>
+      <div>
+        <div id="verdict" class="verdict">&nbsp;</div>
+        <ul id="advice" class="advice"></ul>
+      </div>
+    </section>
+
+    <section id="metrics" class="grid"></section>
+
+    <section class="card chart-card">
+      <div class="chart-head">
+        <h2 id="chart-title">CO₂</h2>
+        <div class="seg" id="ranges">
+          <button data-h="6">6ч</button>
+          <button data-h="24" class="active">24ч</button>
+          <button data-h="168">7д</button>
+          <button data-h="720">30д</button>
+        </div>
+      </div>
+      <div id="chart" class="chart"></div>
+      <div id="chart-stats" class="chart-stats muted"></div>
+    </section>
+
+    <p id="error" class="error" hidden></p>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

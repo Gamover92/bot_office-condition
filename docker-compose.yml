@@ -1,0 +1,35 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0.20
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # Qingping devices connect here (office PC IP)
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      DB_PATH: /data/climate.db
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:8080"   # Mini App and API (behind the HTTPS tunnel)
+    depends_on:
+      - mosquitto
+
+  # HTTPS for the Mini App through Cloudflare Tunnel.
+  # Start with: docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - bot
