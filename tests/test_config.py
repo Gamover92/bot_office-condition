@@ -5,7 +5,7 @@ from app.config import CHAT_ENV_KEYS, Settings
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    for key in ("TZ", "ALLOWED_CHAT_IDS", "ALLOWED_USER_IDS", "ADMIN_USER_IDS", "DEVICE_NAMES", *CHAT_ENV_KEYS):
+    for key in ("TZ", "ALLOWED_CHAT_IDS", "ALLOWED_USER_IDS", "DEVICE_NAMES", *CHAT_ENV_KEYS):
         monkeypatch.delenv(key, raising=False)
     return monkeypatch
 
@@ -13,13 +13,12 @@ def clean_env(monkeypatch):
 def test_from_env(clean_env):
     clean_env.setenv("BOT_TOKEN", "1:x")
     clean_env.setenv("ALLOWED_CHAT_IDS", "-100, 5")
-    clean_env.setenv("ADMIN_USER_IDS", "7")
     clean_env.setenv("DEVICE_NAMES", "aabb=Офис; ccdd = Переговорка")
     clean_env.setenv("CO2_MAX", "1000")
     s = Settings.from_env()
     assert s.bot_token == "1:x"
     assert s.allowed_chats == {-100, 5}
-    assert s.admin_users == {7}
+    assert not hasattr(s, "admin_users")
     assert s.device_names == {"AABB": "Офис", "CCDD": "Переговорка"}
     assert s.chat_defaults == {"CO2_MAX": "1000"}
     assert s.tz == "Europe/Moscow"

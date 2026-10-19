@@ -60,7 +60,7 @@ class AdminChecker:
     async def is_admin(self, bot: Bot, chat_id: int, chat_type: str, user_id: int) -> bool:
         if chat_type == ChatType.PRIVATE:
             # The user owns a private chat with the bot.
-            return user_id == chat_id or user_id in self.settings.admin_users
+            return user_id == chat_id
         key = (chat_id, user_id)
         cached = self.cache.get(key)
         if cached and time.monotonic() - cached[0] < ADMIN_CACHE_TTL:

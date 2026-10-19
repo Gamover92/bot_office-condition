@@ -40,7 +40,6 @@ class Settings:
     bot_token: str
     allowed_chats: frozenset[int] = frozenset()
     allowed_users: frozenset[int] = frozenset()
-    admin_users: frozenset[int] = frozenset()
     mqtt_host: str = "mosquitto"
     mqtt_port: int = 1883
     mqtt_user: str = ""
@@ -65,7 +64,6 @@ class Settings:
             bot_token=e("BOT_TOKEN", ""),
             allowed_chats=_int_set(e("ALLOWED_CHAT_IDS", "")),
             allowed_users=_int_set(e("ALLOWED_USER_IDS", "")),
-            admin_users=_int_set(e("ADMIN_USER_IDS", "")),
             mqtt_host=e("MQTT_HOST", "mosquitto"),
             mqtt_port=int(e("MQTT_PORT", "1883")),
             mqtt_user=e("MQTT_USER", ""),

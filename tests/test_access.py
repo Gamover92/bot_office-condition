@@ -11,7 +11,7 @@ from app.access import AccessMiddleware, AdminChecker
 from app.chat_settings import ChatConfig, ChatStore
 from app.config import Settings
 
-LIMITED = Settings(bot_token="x", allowed_chats=frozenset({-100}), admin_users=frozenset({7}))
+LIMITED = Settings(bot_token="x", allowed_chats=frozenset({-100}))
 
 
 def data(user_id, chat_id):
@@ -39,8 +39,7 @@ async def test_admin_in_private_chat():
     checker = AdminChecker(LIMITED)
     bot = AsyncMock()
     assert await checker.is_admin(bot, 8, "private", 8)  # owner of the private chat
-    assert await checker.is_admin(bot, 9, "private", 7)  # in ADMIN_USER_IDS
-    assert not await checker.is_admin(bot, 9, "private", 8)
+    assert not await checker.is_admin(bot, 9, "private", 8)  # another user in that chat
     bot.get_chat_member.assert_not_awaited()
 
 

@@ -19,7 +19,7 @@
 - Default chat settings: CO₂ max 1200 ppm, temperature 18–27 °C, humidity 30–70 %, PM2.5 max 35, alerts on, report on 09:00 Mon–Fri, quiet hours on 20:00–08:00.
 - Alerts: one message on `ok → bad`, one on `bad → ok`, no repeats. Hysteresis 5 %. Messages during quiet hours wait. No alert evaluation on data older than `STALE_AFTER_MIN` (default 30).
 - Morning report: once per day, CO₂ chart for the last 12 h. Catch-up until 12:00, or 10 min after the report time if that is later.
-- `/settings` only for group admins (`getChatMember`, cache 5 min) or `ADMIN_USER_IDS` in private chats. Value input timeout 5 min.
+- `/settings` only for group admins (`getChatMember`, cache 5 min) or the owner in private chats. Value input timeout 5 min.
 - Bot parse mode: HTML. Escape user-controlled text (device names) with `html.escape`.
 - Run tests with `python -m pytest -q` from the repository root.
 

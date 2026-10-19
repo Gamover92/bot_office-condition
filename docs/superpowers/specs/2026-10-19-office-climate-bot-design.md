@@ -155,7 +155,7 @@ The 🟢🟡🔴 rating in the summary uses the stricter comfort scale from `qin
 
 - `ALLOWED_CHAT_IDS`, `ALLOWED_USER_IDS`: the bot replies only in these chats or to these users. Empty lists mean everyone has access.
 - Settings in a group: the user must be a group admin (`getChatMember`, cached for 5 min; a failed lookup is not cached).
-- Settings in a private chat: the user who owns the chat (`user_id == chat_id`) or a user in `ADMIN_USER_IDS` is an admin. So each user manages alerts and the report for their own private chat.
+- Settings in a private chat: the user who owns the chat (`user_id == chat_id`) is the admin. So each user manages alerts and the report for their own private chat.
 - Set `ALLOWED_CHAT_IDS` or `ALLOWED_USER_IDS` in production: with empty lists, any Telegram user can read the office data.
 - A user who is not an admin pushes a settings button: the bot shows the popup "Только для админов".
 - Group upgraded to a supergroup (the chat ID changes): the bot moves the chat's settings, alert state and report log to the new ID, on the service message with `migrate_to_chat_id` or when a send fails with `TelegramMigrateToChat`. The service message skips the allow-list check: it comes from Telegram, the bot sends nothing, and it moves only rows of a registered (so allowed) chat. `ALLOWED_CHAT_IDS` must be updated to the new ID by hand.
