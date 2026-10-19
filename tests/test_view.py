@@ -2,6 +2,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import EditMessageText
 from aiogram.types import BufferedInputFile
@@ -130,3 +131,13 @@ async def test_edit_view_sends_new_view_when_edit_fails():
     message.edit_text.side_effect = bad_request("message is not modified")
     await edit_view(message, View("text", None, None))
     assert calls == ["send"]
+
+
+async def test_edit_view_failed_send_in_type_change_is_not_retried():
+    calls = []
+    message = text_message(calls)
+    message.bot.send_photo.side_effect = bad_request("chat not found")
+    with pytest.raises(TelegramBadRequest):
+        await edit_view(message, View("text", b"png", None))
+    assert message.bot.send_photo.await_count == 1
+    message.delete.assert_not_awaited()

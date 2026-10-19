@@ -114,17 +114,18 @@ async def send_view(bot: Bot, chat_id: int, view: View) -> None:
 
 async def edit_view(message: Message, view: View) -> None:
     """Edit the summary message in place. Recreate it if the type (photo/text) changes."""
+    if bool(view.photo) != bool(message.photo):
+        # Send first: if sending fails, the old summary stays. The error is not retried here.
+        await send_view(message.bot, message.chat.id, view)
+        with contextlib.suppress(TelegramBadRequest):
+            await message.delete()
+        return
     try:
-        if view.photo and message.photo:
+        if view.photo:
             media = InputMediaPhoto(media=BufferedInputFile(view.photo, PHOTO_NAME), caption=view.text)
             await message.edit_media(media, reply_markup=view.keyboard)
-        elif not view.photo and not message.photo:
-            await message.edit_text(view.text, reply_markup=view.keyboard)
         else:
-            # Send first: if sending fails, the old summary stays.
-            await send_view(message.bot, message.chat.id, view)
-            with contextlib.suppress(TelegramBadRequest):
-                await message.delete()
+            await message.edit_text(view.text, reply_markup=view.keyboard)
     except TelegramBadRequest as exc:
         if "message is not modified" in str(exc):
             return
