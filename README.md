@@ -80,10 +80,14 @@ docker compose exec mosquitto mosquitto_sub -t 'qingping/#' -v
 
 ### 4. Проверка без датчика
 
+Отправьте тестовое сообщение. Команда одна и та же для bash (Linux/macOS) и PowerShell (Windows):
+
 ```bash
-docker compose exec mosquitto mosquitto_pub -t qingping/582D34000000/up -m \
-  "{\"mac\":\"582D34000000\",\"type\":\"17\",\"sensorData\":[{\"timestamp\":{\"value\":$(date +%s)},\"co2\":{\"value\":1300},\"temperature\":{\"value\":23}}]}"
+echo '{"mac":"582D34000000","co2":1300,"temperature":23}' | docker compose exec -T mosquitto mosquitto_pub -t qingping/582D34000000/up -s
 ```
+
+В сообщении нет времени — бот возьмёт текущее. JSON передаётся через stdin (`-s`), потому что
+Windows PowerShell 5.1 убирает внутренние кавычки из аргументов (`-m '{"mac":...}'`) у внешних программ.
 
 Затем `/climate` в Telegram покажет CO₂ 1300 ppm. Через минуту придёт уведомление о высоком CO₂
 (если сейчас не тихие часы).
@@ -92,6 +96,12 @@ docker compose exec mosquitto mosquitto_pub -t qingping/582D34000000/up -m \
 
 ```bash
 ./scripts/forget-sensor.sh 582D34000000
+```
+
+В Windows PowerShell то же самое:
+
+```powershell
+docker compose exec bot python -c "from app.store import Store; Store('/data/climate.db').delete_device('582D34000000')"
 ```
 
 ## Настройки

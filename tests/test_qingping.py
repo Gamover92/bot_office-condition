@@ -84,3 +84,11 @@ def test_rating():
 def test_advice():
     assert advice({"co2": 1100})[0].startswith("Проветрите")
     assert advice({"co2": 600, "temperature": 22}) == []
+
+
+def test_parse_readme_test_payload_uses_current_time():
+    before = int(time.time())
+    readings = parse_message("qingping/582D34000000/up", b'{"mac":"582D34000000","co2":1300,"temperature":23}')
+    assert readings[0].mac == "582D34000000"
+    assert readings[0].values == {"co2": 1300.0, "temperature": 23.0}
+    assert before <= readings[0].ts <= time.time()
