@@ -1,13 +1,33 @@
-"""Тесты app/widget.py — сырой HTTP-клиент методов виджетов Bot API."""
+"""Тесты app/widget.py — сырой HTTP-клиент методов виджетов Bot API и сборка HTML."""
 
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from app.config import Settings
 from app.qingping import METRICS, Reading
-from app.widget import build_public_data, edit_widget_data, send_widget
+from app.store import Store
+from app.view import CHART_METRICS
+from app.widget import (
+    MAX_COMPRESSED_BYTES,
+    build_public_data,
+    build_widget_html,
+    compressed_size,
+    edit_widget_data,
+    send_widget,
+)
+
+S = Settings(bot_token="x", tz="Europe/Moscow")
+
+
+def fill(store: Store, mac: str, values: dict, minutes: int = 24 * 60) -> float:
+    """Засыпает показания с шагом в минуту, возвращает now."""
+    now = time.time()
+    store.add([Reading(mac, int(now) - i * 60, values) for i in range(minutes)])
+    return now
 
 
 class RecordingSession:
@@ -115,3 +135,28 @@ async def test_edit_widget_data_raises_on_api_error():
     bot = fake_bot_with_session(ok=False, description="message is not modified")
     with pytest.raises(RuntimeError, match="message is not modified"):
         await edit_widget_data(bot, 7, 42, "{}")
+
+
+def test_html_none_without_data():
+    assert build_widget_html(S, Store(":memory:"), "AA", time.time()) is None
+
+
+def test_html_fits_budget_with_dense_history():
+    store = Store(":memory:")
+    now = time.time()
+    values = {m: 100.0 for m in CHART_METRICS}
+    store.add([Reading("AA", int(now) - i * 60, values) for i in range(7 * 24 * 60)])
+    html = build_widget_html(S, store, "AA", now)
+    assert html is not None
+    assert compressed_size(html) <= MAX_COMPRESSED_BYTES
+    assert len(html.encode()) <= 32 * 1024
+
+
+def test_html_bakes_all_metrics_periods_and_office_tz():
+    store = Store(":memory:")
+    now = fill(store, "AA", {"co2": 700.0, "temperature": 22.0})
+    html = build_widget_html(S, store, "AA", now)
+    assert html is not None
+    for metric in ("co2", "temperature"):
+        assert metric in html
+    assert "Europe/Moscow" in html or "+03:00" in html
