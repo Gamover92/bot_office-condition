@@ -1,6 +1,7 @@
 """Тесты app/widget.py — сырой HTTP-клиент методов виджетов Bot API и сборка HTML."""
 
 import json
+import re
 import time
 from types import SimpleNamespace
 
@@ -160,3 +161,19 @@ def test_html_bakes_all_metrics_periods_and_office_tz():
     for metric in ("co2", "temperature"):
         assert metric in html
     assert "Europe/Moscow" in html or "+03:00" in html
+
+
+def test_html_breaks_series_at_sensor_gap():
+    """Разрыв в данных (перезапуск датчика) — два сегмента, хвост не сдвигается."""
+    store = Store(":memory:")
+    base = int(time.time())
+    readings = [Reading("AA", base - 7200 + i * 60, {"co2": 600.0 + i}) for i in range(60)]
+    readings += [Reading("AA", base + i * 60, {"co2": 700.0 + i}) for i in range(60)]
+    store.add(readings)
+    html = build_widget_html(S, store, "AA", base + 3600)
+    data = json.loads(re.search(r"var D=(\{.*?\}),Z=", html).group(1))
+    segments = data["co2:6"]
+    assert len(segments) == 2
+    # Второй сегмент начинается с реальной метки времени после разрыва,
+    # а не с t0 + dt*i равномерной сетки.
+    assert segments[1][0] == base

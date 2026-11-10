@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
 
-from app.charts import LINE_COLOR, ZONE_COLORS, _zones
+from app.charts import LINE_COLOR, ZONE_COLORS, zones
 from app.config import Settings
 from app.qingping import METRICS, Reading
 from app.store import Store
@@ -28,6 +28,13 @@ MAX_HTML_BYTES = 32 * 1024
 
 # Кандидаты плотности точек на серию: берём первый, влезающий в бюджет.
 POINT_CAPS = (480, 360, 288, 240, 192, 160, 128, 96, 64, 48, 32, 24, 16)
+
+# Разрыв серии, если шаг между соседними точками больше медианного во столько раз.
+GAP_FACTOR = 3
+
+# Предохранитель: максимум сегментов на серию (оставляются самые длинные).
+# Срабатывает только на патологически рваных данных; ограничивает размер HTML.
+MAX_SEGMENTS = 32
 
 
 def build_public_data(reading: Reading, n: int = 0) -> str:
@@ -111,24 +118,56 @@ def _compact(metric: str, value: float) -> float | int:
     return int(rounded) if digits == 0 else rounded
 
 
-def _encode_series(points: list[tuple[int, float]], metric: str) -> list:
-    """Компактное кодирование серии: [t0, dt, [values]] (спайк, задача 1)."""
-    t0 = points[0][0]
-    dt = max(1, round((points[-1][0] - t0) / (len(points) - 1)))
-    return [t0, dt, [_compact(metric, v) for _, v in points]]
+def _split_segments(points: list[tuple[int, float]]) -> list[list[tuple[int, float]]]:
+    """Разбивает серию на сегменты по разрывам > GAP_FACTOR × медианный шаг.
+
+    Кодирование [t0, dt, [values]] предполагает равномерный шаг: без разбиения
+    точки после разрыва (перезапуск датчика) рисовались бы не на своих местах.
+    """
+    if len(points) < 2:
+        return [points] if points else []
+    steps = sorted(b[0] - a[0] for a, b in zip(points, points[1:]))
+    limit = steps[len(steps) // 2] * GAP_FACTOR
+    segments = []
+    start = 0
+    for i in range(1, len(points)):
+        if points[i][0] - points[i - 1][0] > limit:
+            segments.append(points[start:i])
+            start = i
+    segments.append(points[start:])
+    return segments
+
+
+def _encode_series(points: list[tuple[int, float]], metric: str, max_points: int) -> list[list]:
+    """Компактное кодирование серии: список сегментов [t0, dt, [values]] (спайк, задача 1).
+
+    Сегменты короче двух точек отбрасываются — линию из одной точки не нарисовать.
+    """
+    segments = []
+    for seg in _split_segments(points):
+        seg = _downsample(seg, max_points)
+        if len(seg) < 2:
+            continue
+        t0 = seg[0][0]
+        dt = max(1, round((seg[-1][0] - t0) / (len(seg) - 1)))
+        segments.append([t0, dt, [_compact(metric, v) for _, v in seg]])
+    if len(segments) > MAX_SEGMENTS:
+        segments.sort(key=lambda s: len(s[2]), reverse=True)
+        segments = sorted(segments[:MAX_SEGMENTS], key=lambda s: s[0])
+    return segments
 
 
 def _bake_zones(metric: str) -> list[list]:
     """Зоны метрики как [[lo, hi, color], ...]; края None = бесконечность."""
     inf = float("inf")
-    zones = []
-    for a, b, level in _zones(metric):
-        zones.append([
+    out = []
+    for a, b, level in zones(metric):
+        out.append([
             None if a == -inf else a,
             None if b == inf else b,
             ZONE_COLORS[level],
         ])
-    return zones
+    return out
 
 
 _CSS = (
@@ -152,15 +191,18 @@ function $(i){return document.getElementById(i)}
 function fmt(t,lg){var d=new Date((t+OFF*60)*1000);
 function p(x){return(x<10?"0":"")+x}
 return lg?p(d.getUTCDate())+"."+p(d.getUTCMonth()+1):p(d.getUTCHours())+":"+p(d.getUTCMinutes())}
-function draw(){var s=D[cur.m+":"+cur.h],cv=$("cv");
+function draw(){var SG=D[cur.m+":"+cur.h],cv=$("cv");
 var w=cv.clientWidth||360,h=140,dpr=window.devicePixelRatio||1;
 cv.width=w*dpr;cv.height=h*dpr;
 var x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);
 x.clearRect(0,0,w,h);
 x.fillStyle="#888";x.font="10px sans-serif";
-if(!s){x.fillText("нет данных",8,20);return}
-var t0=s[0],dt=s[1],V=s[2],n=V.length,t1=t0+dt*(n-1),i;
-var lo=Math.min.apply(null,V),hi=Math.max.apply(null,V);
+if(!SG||!SG.length){x.fillText("нет данных",8,20);return}
+var t0=Infinity,t1=-Infinity,lo=Infinity,hi=-Infinity,i,j,sg,V;
+for(j=0;j<SG.length;j++){sg=SG[j];V=sg[2];
+if(sg[0]<t0)t0=sg[0];
+var te=sg[0]+sg[1]*(V.length-1);if(te>t1)t1=te;
+for(i=0;i<V.length;i++){if(V[i]<lo)lo=V[i];if(V[i]>hi)hi=V[i]}}
 var pad=(hi-lo)*0.15||1;lo-=pad;hi+=pad;
 var L=30,B=14,iw=w-L-4,ih=h-B-6;
 function X(t){return L+(t-t0)/((t1-t0)||1)*iw}
@@ -170,9 +212,11 @@ for(i=0;i<zs.length;i++){var a=Math.max(zs[i][0]==null?lo:zs[i][0],lo),
 b=Math.min(zs[i][1]==null?hi:zs[i][1],hi);
 if(a<b){x.fillStyle=zs[i][2];x.globalAlpha=0.12;
 x.fillRect(L,Y(b),iw,Y(a)-Y(b));x.globalAlpha=1}}
-x.strokeStyle=LC;x.lineWidth=1.5;x.beginPath();
-for(i=0;i<n;i++){var px=X(t0+dt*i),py=Y(V[i]);i?x.lineTo(px,py):x.moveTo(px,py)}
-x.stroke();
+x.strokeStyle=LC;x.lineWidth=1.5;
+for(j=0;j<SG.length;j++){sg=SG[j];V=sg[2];x.beginPath();
+for(i=0;i<V.length;i++){var px=X(sg[0]+sg[1]*i),py=Y(V[i]);
+i?x.lineTo(px,py):x.moveTo(px,py)}
+x.stroke()}
 var lg=(t1-t0)>172800;
 for(i=0;i<=3;i++){var t=t0+(t1-t0)*i/3,s2=fmt(t,lg),px=X(t);
 x.fillText(s2,Math.min(Math.max(px-13,0),w-28),h-2)}
@@ -258,8 +302,9 @@ def build_widget_html(settings: Settings, store: Store, mac: str, now: float) ->
     html = ""
     for cap in POINT_CAPS:
         data = {
-            f"{m}:{hours}": _encode_series(_downsample(points, cap), m)
+            f"{m}:{hours}": encoded
             for (m, hours), points in raw.items()
+            if (encoded := _encode_series(points, m, cap))
         }
         html = _render_html(settings, reading, metrics, data, now)
         if compressed_size(html) <= MAX_COMPRESSED_BYTES and len(html.encode()) <= MAX_HTML_BYTES:

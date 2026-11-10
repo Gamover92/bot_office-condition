@@ -16,7 +16,7 @@ LINE_COLOR = "#2f80ed"
 INF = float("inf")
 
 
-def _zones(metric: str) -> list[tuple[float, float, str]]:
+def zones(metric: str) -> list[tuple[float, float, str]]:
     if metric in LIMITS:
         good, fair = LIMITS[metric]
         return [(-INF, good, "good"), (good, fair, "fair"), (fair, INF, "bad")]
@@ -43,7 +43,7 @@ def render_chart(points: list[tuple[int, float]], metric: str, tz: ZoneInfo) -> 
 
     fig = Figure(figsize=(8, 4), dpi=120)
     ax = fig.subplots()
-    for a, b, level in _zones(metric):
+    for a, b, level in zones(metric):
         a, b = max(a, y0), min(b, y1)
         if a < b:
             ax.axhspan(a, b, color=ZONE_COLORS[level], alpha=0.12, linewidth=0)
