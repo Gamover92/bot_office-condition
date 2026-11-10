@@ -70,7 +70,8 @@ def build_public_data(reading: Reading, n: int = 0) -> str:
 
 async def _api(bot: Bot, method: str, **params):
     url = API_URL.format(token=bot.token, method=method)
-    async with bot.session.post(url, data=params) as resp:
+    session = await bot.session.create_session()
+    async with session.post(url, data=params) as resp:
         body = await resp.json()
     if not body.get("ok"):
         raise RuntimeError(f"{method}: {body.get('description')}")

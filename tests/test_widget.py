@@ -37,28 +37,38 @@ def fill(store: Store, mac: str, values: dict, minutes: int = 24 * 60) -> float:
 
 
 class RecordingSession:
-    """Подмена bot.session: записывает (method, payload), отвечает заготовкой."""
+    """Подмена bot.session (aiogram AiohttpSession): create_session() -> объект с post()."""
 
     def __init__(self, response: dict):
         self.calls: list[tuple[str, dict]] = []
         self._response = response
 
-    def post(self, url: str, **kwargs):
-        method = url.rsplit("/", 1)[-1]
-        self.calls.append((method, kwargs.get("data", {})))
-        session = self
+    def _next_response(self, data: dict) -> dict:
+        return self._response
 
-        class _Resp:
-            async def __aenter__(self):
-                return self
+    async def create_session(self):
+        outer = self
 
-            async def __aexit__(self, *exc):
-                return False
+        class _Client:
+            def post(self, url: str, **kwargs):
+                method = url.rsplit("/", 1)[-1]
+                data = kwargs.get("data", {})
+                outer.calls.append((method, data))
+                response = outer._next_response(data)
 
-            async def json(self):
-                return session._response
+                class _Resp:
+                    async def __aenter__(self):
+                        return self
 
-        return _Resp()
+                    async def __aexit__(self, *exc):
+                        return False
+
+                    async def json(self):
+                        return response
+
+                return _Resp()
+
+        return _Client()
 
 
 def fake_bot_with_session(**response):
@@ -309,13 +319,10 @@ async def test_update_throttles_per_cycle_and_drops_dead_messages():
     dead_mid = 101
 
     class FlakySession(RecordingSession):
-        def post(self, url, **kwargs):
-            data = kwargs.get("data", {})
+        def _next_response(self, data):
             if data.get("message_id") == dead_mid:
-                self._response = {"ok": False, "description": "message not found"}
-            else:
-                self._response = {"ok": True, "result": True}
-            return super().post(url, **kwargs)
+                return {"ok": False, "description": "message not found"}
+            return {"ok": True, "result": True}
 
     bot = SimpleNamespace(session=FlakySession({}), token="123456:ABC")
     store = widget_store(messages=3)
