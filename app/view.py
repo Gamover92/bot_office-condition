@@ -80,6 +80,14 @@ def build_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def build_widget_keyboard(settings: Settings, macs: list[str], mac: str, owner: int) -> InlineKeyboardMarkup:
+    rows = []
+    if len(macs) > 1:
+        rows.append([_button(device_name(settings, m), m, "co2", 24, owner, m == mac) for m in sorted(macs)])
+    rows.append([_button("🔄 Обновить", mac, "co2", 24, owner)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def build_view(
     settings: Settings,
     store: Store,

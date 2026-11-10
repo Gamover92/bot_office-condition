@@ -10,7 +10,7 @@ from aiogram.types import BufferedInputFile
 from app.config import Settings
 from app.qingping import Reading
 from app.store import Store
-from app.view import ClimateCb, View, build_keyboard, build_view, edit_view, send_view
+from app.view import ClimateCb, View, build_keyboard, build_view, build_widget_keyboard, edit_view, send_view
 
 S = Settings(bot_token="x", tz="Europe/Moscow")
 
@@ -29,6 +29,17 @@ def test_keyboard_one_device():
 def test_keyboard_two_devices():
     kb = build_keyboard(S, ["AA", "BB"], "BB", ["co2"], "co2", 6, owner=7)
     assert texts(kb)[0] == ["Датчик AA", "• Датчик BB •"]
+
+
+def test_widget_keyboard_two_devices():
+    kb = build_widget_keyboard(S, ["AA", "BB"], "BB", owner=7)
+    assert texts(kb) == [["Датчик AA", "• Датчик BB •"], ["🔄 Обновить"]]
+    data = ClimateCb.unpack(kb.inline_keyboard[1][0].callback_data)
+    assert (data.mac, data.owner) == ("BB", 7)
+
+
+def test_widget_keyboard_one_device():
+    assert texts(build_widget_keyboard(S, ["AA"], "AA", owner=7)) == [["🔄 Обновить"]]
 
 
 def fill(store: Store, mac: str, values: dict, count: int = 10) -> float:
