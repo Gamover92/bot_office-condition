@@ -15,12 +15,14 @@ from app.store import Store
 from app.view import CHART_METRICS
 from app.widget import (
     MAX_COMPRESSED_BYTES,
+    MAX_WIDGET_AGE_HOURS,
     build_public_data,
     build_widget_html,
     compressed_size,
     edit_widget_data,
     send_widget,
     send_widget_summary,
+    update_widget_data_once,
     widgets_allowed,
 )
 
@@ -222,3 +224,84 @@ async def test_send_widget_summary_none_on_size_overflow(monkeypatch):
     monkeypatch.setattr(widget, "build_widget_html", lambda *a: os.urandom(4 * MAX_COMPRESSED_BYTES).hex())
     assert await send_widget_summary(bot, S, store, 7, owner=7) is None
     assert bot.session.calls == []
+
+
+def edit_calls(bot) -> list[tuple[str, dict]]:
+    return [c for c in bot.session.calls if c[0] == "editMessageWidgetData"]
+
+
+def widget_store(sent_at: int | None = None, messages: int = 1) -> Store:
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    base = int(time.time()) if sent_at is None else sent_at
+    for i in range(messages):
+        store.add_widget_message(7, 100 + i, "AA", base)
+    return store
+
+
+async def test_update_edits_only_on_change():
+    bot = fake_bot_with_session(ok=True, result=True)
+    store = widget_store()
+    cache: dict = {}
+    await update_widget_data_once(bot, S, store, cache)
+    await update_widget_data_once(bot, S, store, cache)
+    assert len(edit_calls(bot)) == 1
+
+
+async def test_update_edits_again_when_values_change():
+    bot = fake_bot_with_session(ok=True, result=True)
+    store = widget_store()
+    cache: dict = {}
+    await update_widget_data_once(bot, S, store, cache)
+    store.add([Reading("AA", int(time.time()), {"co2": 900.0})])
+    await update_widget_data_once(bot, S, store, cache)
+    assert len(edit_calls(bot)) == 2
+
+
+async def test_update_throttles_per_cycle_and_drops_dead_messages():
+    dead_mid = 101
+
+    class FlakySession(RecordingSession):
+        def post(self, url, **kwargs):
+            data = kwargs.get("data", {})
+            if data.get("message_id") == dead_mid:
+                self._response = {"ok": False, "description": "message not found"}
+            else:
+                self._response = {"ok": True, "result": True}
+            return super().post(url, **kwargs)
+
+    bot = SimpleNamespace(session=FlakySession({}), token="123456:ABC")
+    store = widget_store(messages=3)
+    cache: dict = {}
+    await update_widget_data_once(bot, S, store, cache)
+    calls = edit_calls(bot)
+    # не больше одной правки на сообщение за проход
+    assert sorted(payload["message_id"] for _, payload in calls) == [100, 101, 102]
+    assert store.get_widget_message(7, dead_mid) is None
+    assert (7, dead_mid) not in cache
+    # Цикл живёт: следующий проход не трогает мёртвое сообщение и не правит без изменений
+    await update_widget_data_once(bot, S, store, cache)
+    assert edit_calls(bot) == calls
+
+
+async def test_update_ignores_old_messages():
+    bot = fake_bot_with_session(ok=True, result=True)
+    old = int(time.time()) - (MAX_WIDGET_AGE_HOURS + 1) * 3600
+    store = widget_store(sent_at=old)
+    await update_widget_data_once(bot, S, store, {})
+    assert edit_calls(bot) == []
+
+
+async def test_update_warns_and_continues_on_other_errors():
+    bot = fake_bot_with_session(ok=False, description="Forbidden: bot was blocked")
+    store = widget_store()
+    await update_widget_data_once(bot, S, store, {})
+    assert store.get_widget_message(7, 100) == "AA"  # запись не вычищена
+
+
+async def test_update_skips_messages_without_readings():
+    bot = fake_bot_with_session(ok=True, result=True)
+    store = Store(":memory:")
+    store.add_widget_message(7, 100, "AA", int(time.time()))
+    await update_widget_data_once(bot, S, store, {})
+    assert edit_calls(bot) == []

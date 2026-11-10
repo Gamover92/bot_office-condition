@@ -19,6 +19,7 @@ from .handlers import climate, migration, settings as settings_menu
 from .mqtt_listener import run_mqtt
 from .scheduler import run_scheduler
 from .store import Store
+from .widget import run_widget_updates
 
 log = logging.getLogger("office_climate")
 
@@ -38,6 +39,17 @@ def on_task_done(task: asyncio.Task) -> None:
         return
     log.critical("Background task %s failed, exiting", task.get_name(), exc_info=task.exception())
     os._exit(1)
+
+
+def background_tasks(bot: Bot, settings: Settings, store: Store, chats: ChatStore) -> list[asyncio.Task]:
+    tasks = [
+        asyncio.create_task(run_mqtt(settings, store)),
+        asyncio.create_task(prune_loop(store, settings.history_days)),
+        asyncio.create_task(run_scheduler(bot, settings, store, chats)),
+    ]
+    if settings.widgets_enabled:
+        tasks.append(asyncio.create_task(run_widget_updates(bot, settings, store)))
+    return tasks
 
 
 async def main() -> None:
@@ -71,11 +83,7 @@ async def main() -> None:
         ]
     )
 
-    background = [
-        asyncio.create_task(run_mqtt(settings, store)),
-        asyncio.create_task(prune_loop(store, settings.history_days)),
-        asyncio.create_task(run_scheduler(bot, settings, store, chats)),
-    ]
+    background = background_tasks(bot, settings, store, chats)
     for task in background:
         task.add_done_callback(on_task_done)
     try:

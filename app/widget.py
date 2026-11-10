@@ -6,6 +6,7 @@ aiogram 3.31 не знает методов виджетов (Bot API 10.4), п�
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -30,6 +31,9 @@ API_URL = "https://api.telegram.org/bot{token}/{method}"
 PUBLIC_DATA_BUDGET = 1000
 MAX_COMPRESSED_BYTES = 3800
 MAX_HTML_BYTES = 32 * 1024
+
+UPDATE_INTERVAL_SEC = 5
+MAX_WIDGET_AGE_HOURS = 24
 
 # Кандидаты плотности точек на серию: берём первый, влезающий в бюджет.
 POINT_CAPS = (480, 360, 288, 240, 192, 160, 128, 96, 64, 48, 32, 24, 16)
@@ -361,3 +365,46 @@ async def send_widget_summary(
         return None
     store.add_widget_message(chat_id, message_id, mac, int(now))
     return message_id
+
+
+async def update_widget_data_once(bot: Bot, settings: Settings, store: Store, cache: dict) -> None:
+    """Один проход по свежим виджет-сообщениям: правит public_data при изменениях.
+
+    ``cache[(chat_id, message_id)] = (data, n)`` — последняя отправленная строка
+    и её счётчик. Счётчик растёт с каждой правкой: Telegram отклоняет правку
+    с неизменным public_data, а после перезапуска процесса кэш пуст и первая
+    правка не должна совпасть с тем, что уже лежит в сообщении.
+    «message not found» вычищает запись из реестра; прочие ошибки — warning,
+    проход продолжается.
+    """
+    now = int(time.time())
+    for chat_id, message_id, mac in store.widget_messages(MAX_WIDGET_AGE_HOURS * 3600, now):
+        reading = store.latest(mac)
+        if reading is None:
+            continue
+        key = (chat_id, message_id)
+        data, n = cache.get(key, (None, 0))
+        if build_public_data(reading, n) == data:
+            continue
+        fresh = build_public_data(reading, n + 1)
+        try:
+            await edit_widget_data(bot, chat_id, message_id, fresh)
+        except RuntimeError as exc:
+            if "message not found" in str(exc).lower():
+                store.drop_widget_message(chat_id, message_id)
+                cache.pop(key, None)
+            else:
+                log.warning("Widget update failed for %s/%s: %s", chat_id, message_id, exc)
+        except Exception as exc:
+            log.warning("Widget update failed for %s/%s: %s", chat_id, message_id, exc)
+        else:
+            cache[key] = (fresh, n + 1)
+
+
+async def run_widget_updates(bot: Bot, settings: Settings, store: Store) -> None:
+    """Бесконечный цикл живых обновлений public_data и очистки старых записей."""
+    cache: dict = {}
+    while True:
+        await update_widget_data_once(bot, settings, store, cache)
+        store.prune_widget_messages(int(time.time()) - MAX_WIDGET_AGE_HOURS * 3600)
+        await asyncio.sleep(UPDATE_INTERVAL_SEC)
