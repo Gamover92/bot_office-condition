@@ -22,6 +22,12 @@ class Store:
             " mac TEXT NOT NULL, ts INTEGER NOT NULL, data TEXT NOT NULL,"
             " PRIMARY KEY (mac, ts))"
         )
+        self.db.execute(
+            "CREATE TABLE IF NOT EXISTS widget_messages ("
+            " chat_id INTEGER NOT NULL, message_id INTEGER NOT NULL,"
+            " mac TEXT NOT NULL, sent_at INTEGER NOT NULL,"
+            " PRIMARY KEY (chat_id, message_id))"
+        )
         self.db.commit()
 
     def add(self, readings: list[Reading]) -> None:
@@ -76,4 +82,37 @@ class Store:
 
     def prune(self, keep_days: int) -> None:
         self.db.execute("DELETE FROM readings WHERE ts < ?", (int(time.time()) - keep_days * 86400,))
+        self.db.commit()
+
+    def add_widget_message(self, chat_id: int, message_id: int, mac: str, sent_at: int) -> None:
+        self.db.execute(
+            "INSERT OR REPLACE INTO widget_messages (chat_id, message_id, mac, sent_at)"
+            " VALUES (?, ?, ?, ?)",
+            (chat_id, message_id, mac, sent_at),
+        )
+        self.db.commit()
+
+    def get_widget_message(self, chat_id: int, message_id: int) -> str | None:
+        row = self.db.execute(
+            "SELECT mac FROM widget_messages WHERE chat_id=? AND message_id=?",
+            (chat_id, message_id),
+        ).fetchone()
+        return row[0] if row else None
+
+    def widget_messages(self, max_age_sec: int, now: int) -> list[tuple[int, int, str]]:
+        rows = self.db.execute(
+            "SELECT chat_id, message_id, mac FROM widget_messages WHERE sent_at >= ?",
+            (now - max_age_sec,),
+        )
+        return [(c, m, mac) for c, m, mac in rows]
+
+    def drop_widget_message(self, chat_id: int, message_id: int) -> None:
+        self.db.execute(
+            "DELETE FROM widget_messages WHERE chat_id=? AND message_id=?",
+            (chat_id, message_id),
+        )
+        self.db.commit()
+
+    def prune_widget_messages(self, older_than: int) -> None:
+        self.db.execute("DELETE FROM widget_messages WHERE sent_at < ?", (older_than,))
         self.db.commit()

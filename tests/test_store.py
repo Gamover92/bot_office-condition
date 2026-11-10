@@ -59,6 +59,24 @@ def test_delete_device_normalises_mac_and_returns_count():
     assert store.delete_device("58-2d-34-aa-bb-cc") == 0
 
 
+def test_widget_messages_roundtrip():
+    store = Store(":memory:")
+    store.add_widget_message(-100, 5, "AA", sent_at=1000)
+    store.add_widget_message(-100, 6, "BB", sent_at=300)
+    assert store.get_widget_message(-100, 5) == "AA"
+    assert store.get_widget_message(-100, 9) is None
+    assert store.widget_messages(max_age_sec=600, now=1000) == [(-100, 5, "AA")]
+    store.drop_widget_message(-100, 5)
+    assert store.get_widget_message(-100, 5) is None
+
+
+def test_prune_widget_messages():
+    store = Store(":memory:")
+    store.add_widget_message(1, 1, "AA", sent_at=100)
+    store.prune_widget_messages(older_than=200)
+    assert store.widget_messages(max_age_sec=10**9, now=300) == []
+
+
 def test_ignored_metrics_hidden_also_in_old_rows():
     store = Store(":memory:")
     store.add([Reading("582D34AABBCC", 100, {"co2": 700, "pm25": 999999999})])  # stored before the fix
