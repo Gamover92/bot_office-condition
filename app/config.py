@@ -54,6 +54,8 @@ class Settings:
     tz: str = "Europe/Moscow"
     chat_defaults: dict[str, str] = field(default_factory=dict)
     ignored_metrics: frozenset[str] = frozenset()
+    widgets_enabled: bool = True
+    widgets_in_groups: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -82,6 +84,8 @@ class Settings:
             tz=tz,
             chat_defaults={k: v for k in CHAT_ENV_KEYS if (v := e(k, ""))},
             ignored_metrics=ignored,
+            widgets_enabled=e("WIDGETS_ENABLED", "on") == "on",
+            widgets_in_groups=e("WIDGETS_IN_GROUPS", "off") == "on",
         )
 
     def is_allowed(self, user_id: int | None, chat_id: int | None = None) -> bool:

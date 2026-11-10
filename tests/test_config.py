@@ -33,6 +33,20 @@ def test_is_allowed():
     assert not s.is_allowed(None, None)
 
 
+def test_widgets_defaults_on_and_groups_off(clean_env):
+    s = Settings.from_env()
+    assert s.widgets_enabled is True
+    assert s.widgets_in_groups is False
+
+
+def test_widgets_flags_from_env(clean_env):
+    clean_env.setenv("WIDGETS_ENABLED", "off")
+    clean_env.setenv("WIDGETS_IN_GROUPS", "on")
+    s = Settings.from_env()
+    assert s.widgets_enabled is False
+    assert s.widgets_in_groups is True
+
+
 def test_from_env_rejects_unknown_tz(clean_env):
     clean_env.setenv("TZ", "Mars/Olympus")
     with pytest.raises(SystemExit, match="Unknown TZ: Mars/Olympus"):
