@@ -7,6 +7,8 @@ aiogram 3.31 не знает методов виджетов (Bot API 10.4), п�
 from __future__ import annotations
 
 import json
+import logging
+import time
 import zlib
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -18,7 +20,10 @@ from app.charts import LINE_COLOR, ZONE_COLORS, zones
 from app.config import Settings
 from app.qingping import METRICS, Reading
 from app.store import Store
-from app.view import CHART_METRICS, PERIODS, SHORT
+from app.summary import caption
+from app.view import CHART_METRICS, PERIODS, SHORT, build_widget_keyboard
+
+log = logging.getLogger(__name__)
 
 API_URL = "https://api.telegram.org/bot{token}/{method}"
 
@@ -310,3 +315,49 @@ def build_widget_html(settings: Settings, store: Store, mac: str, now: float) ->
         if compressed_size(html) <= MAX_COMPRESSED_BYTES and len(html.encode()) <= MAX_HTML_BYTES:
             return html
     return html
+
+
+def widgets_allowed(settings: Settings, chat_type: str) -> bool:
+    """Виджеты только в личке, пока widgets_in_groups выключен."""
+    return settings.widgets_enabled and (chat_type == "private" or settings.widgets_in_groups)
+
+
+async def send_widget_summary(
+    bot: Bot,
+    settings: Settings,
+    store: Store,
+    chat_id: int,
+    owner: int,
+    mac: str | None = None,
+) -> int | None:
+    """Отправляет виджет-сводку, возвращает message_id. None — вызывающий шлёт PNG.
+
+    None при любом сбое: нет данных, HTML не влез в бюджет даже после
+    максимального прореживания, ошибка Bot API.
+    """
+    now = time.time()
+    macs = store.devices()
+    if not macs:
+        log.warning("Widget not sent to %s: no devices", chat_id)
+        return None
+    if mac not in macs:
+        mac = macs[0]
+    reading = store.latest(mac)
+    if reading is None:
+        log.warning("Widget not sent to %s: no data for %s", chat_id, mac)
+        return None
+    html = build_widget_html(settings, store, mac, now)
+    if html is None:
+        log.warning("Widget not sent to %s: no chart data for %s", chat_id, mac)
+        return None
+    if compressed_size(html) > MAX_COMPRESSED_BYTES:
+        log.warning("Widget not sent to %s: html too big (%d compressed)", chat_id, compressed_size(html))
+        return None
+    keyboard = build_widget_keyboard(settings, macs, mac, owner)
+    try:
+        message_id = await send_widget(bot, chat_id, html, caption(settings, reading, now), keyboard)
+    except Exception as exc:
+        log.warning("Widget not sent to %s (%s), falling back to PNG", chat_id, exc)
+        return None
+    store.add_widget_message(chat_id, message_id, mac, int(now))
+    return message_id

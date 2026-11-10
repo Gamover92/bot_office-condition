@@ -1,6 +1,7 @@
 """Тесты app/widget.py — сырой HTTP-клиент методов виджетов Bot API и сборка HTML."""
 
 import json
+import os
 import re
 import time
 from types import SimpleNamespace
@@ -19,6 +20,8 @@ from app.widget import (
     compressed_size,
     edit_widget_data,
     send_widget,
+    send_widget_summary,
+    widgets_allowed,
 )
 
 S = Settings(bot_token="x", tz="Europe/Moscow")
@@ -177,3 +180,45 @@ def test_html_breaks_series_at_sensor_gap():
     # Второй сегмент начинается с реальной метки времени после разрыва,
     # а не с t0 + dt*i равномерной сетки.
     assert segments[1][0] == base
+
+
+def test_widgets_allowed_routing():
+    on = Settings(bot_token="x")  # widgets_enabled=True, in_groups=False
+    off = Settings(bot_token="x", widgets_enabled=False)
+    groups = Settings(bot_token="x", widgets_in_groups=True)
+    assert widgets_allowed(on, "private") and not widgets_allowed(on, "supergroup")
+    assert not widgets_allowed(off, "private")
+    assert widgets_allowed(groups, "supergroup")
+
+
+async def test_send_widget_summary_falls_back_on_api_error():
+    bot = fake_bot_with_session(ok=False, description="INPUT_MEDIA_WIDGET_NOT_ALLOWED")
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    assert await send_widget_summary(bot, S, store, -100, owner=7) is None
+
+
+async def test_send_widget_summary_registers_message():
+    bot = fake_bot_with_session(ok=True, result={"message_id": 42})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    mid = await send_widget_summary(bot, S, store, 7, owner=7)
+    assert mid == 42
+    assert store.get_widget_message(7, mid) == "AA"
+
+
+async def test_send_widget_summary_none_without_data():
+    bot = fake_bot_with_session(ok=True, result={"message_id": 1})
+    assert await send_widget_summary(bot, S, Store(":memory:"), 7, owner=7) is None
+    assert bot.session.calls == []
+
+
+async def test_send_widget_summary_none_on_size_overflow(monkeypatch):
+    import app.widget as widget
+
+    bot = fake_bot_with_session(ok=True, result={"message_id": 1})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    monkeypatch.setattr(widget, "build_widget_html", lambda *a: os.urandom(4 * MAX_COMPRESSED_BYTES).hex())
+    assert await send_widget_summary(bot, S, store, 7, owner=7) is None
+    assert bot.session.calls == []
