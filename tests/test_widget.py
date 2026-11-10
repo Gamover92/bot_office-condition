@@ -1,11 +1,13 @@
 """Тесты app/widget.py — сырой HTTP-клиент методов виджетов Bot API."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.widget import edit_widget_data, send_widget
+from app.qingping import METRICS, Reading
+from app.widget import build_public_data, edit_widget_data, send_widget
 
 
 class RecordingSession:
@@ -77,6 +79,36 @@ async def test_edit_widget_data_payload():
     assert method == "editMessageWidgetData"
     assert payload["chat_id"] == 7 and payload["message_id"] == 42
     assert payload["public_data"] == '{"co2":700}'
+
+
+def test_public_data_fits_budget_with_all_metrics():
+    values = {k: 12345.6 for k in METRICS}
+    data = build_public_data(Reading("AA", 1730000000, values))
+    assert len(data.encode()) <= 1000
+
+
+def test_public_data_roundtrip():
+    data = build_public_data(Reading("AA", 1730000000, {"co2": 700.0, "temperature": 22.5}))
+    parsed = json.loads(data)
+    assert parsed["co2"] == 700 and parsed["ts"] == 1730000000
+
+
+def test_public_data_rounds_by_metric_digits():
+    data = build_public_data(Reading("AA", 1730000000, {"temperature": 22.55, "humidity": 45.6}))
+    parsed = json.loads(data)
+    assert parsed["temperature"] == 22.6 and parsed["humidity"] == 46
+
+
+def test_public_data_includes_counter():
+    parsed = json.loads(build_public_data(Reading("AA", 1, {"co2": 700.0})))
+    assert parsed["n"] == 0
+    parsed = json.loads(build_public_data(Reading("AA", 1, {"co2": 700.0}), n=5))
+    assert parsed["n"] == 5
+
+
+def test_public_data_follows_metrics_order():
+    data = build_public_data(Reading("AA", 1, {"co2": 700.0, "temperature": 22.5}))
+    assert data.index("temperature") < data.index("co2")
 
 
 async def test_edit_widget_data_raises_on_api_error():

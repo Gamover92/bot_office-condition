@@ -6,10 +6,38 @@ aiogram 3.31 не знает методов виджетов (Bot API 10.4), п�
 
 from __future__ import annotations
 
+import json
+
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
 
+from app.qingping import METRICS, Reading
+
 API_URL = "https://api.telegram.org/bot{token}/{method}"
+
+PUBLIC_DATA_BUDGET = 1000
+
+
+def build_public_data(reading: Reading, n: int = 0) -> str:
+    """Компактный JSON последних значений для public_data виджета.
+
+    Плоский словарь: ``{"ts": <unix>, "n": <счётчик>, "<metric>": <значение>}``.
+    Значения округлены по digits из METRICS; порядок метрик — порядок METRICS.
+    ``n`` — счётчик изменений: Telegram отклоняет правки с неизменным
+    public_data ("message is not modified"), счётчик делает строку уникальной.
+    Если JSON не влезает в бюджет, метрики отбрасываются с конца порядка METRICS.
+    """
+    keys = [k for k in METRICS if k in reading.values]
+    while True:
+        payload: dict = {"ts": reading.ts, "n": n}
+        for key in keys:
+            digits = METRICS[key][2]
+            value = round(reading.values[key], digits)
+            payload[key] = int(value) if digits == 0 else value
+        data = json.dumps(payload, separators=(",", ":"))
+        if len(data.encode()) <= PUBLIC_DATA_BUDGET or not keys:
+            return data
+        keys.pop()
 
 
 async def _api(bot: Bot, method: str, **params):
