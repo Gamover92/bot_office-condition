@@ -83,6 +83,7 @@ async def send_widget(
     html: str,
     caption: str,
     keyboard: InlineKeyboardMarkup | None,
+    public_data: str | None = None,
 ) -> int:
     """Отправляет виджет в чат, возвращает message_id."""
     params: dict = {
@@ -91,6 +92,8 @@ async def send_widget(
         "caption": caption,
         "parse_mode": "HTML",
     }
+    if public_data is not None:
+        params["public_data"] = public_data
     if keyboard is not None:
         params["reply_markup"] = keyboard.model_dump_json(exclude_none=True)
     result = await _api(bot, "sendWidget", **params)
@@ -337,29 +340,33 @@ async def send_widget_summary(
     """Отправляет виджет-сводку, возвращает message_id. None — вызывающий шлёт PNG.
 
     None при любом сбое: нет данных, HTML не влез в бюджет даже после
-    максимального прореживания, ошибка Bot API.
+    максимального прореживания, ошибка Bot API, а также любое исключение
+    при чтении из БД или сборке HTML — виджет либо ушёл целиком, либо PNG.
     """
-    now = time.time()
-    macs = store.devices()
-    if not macs:
-        log.warning("Widget not sent to %s: no devices", chat_id)
-        return None
-    if mac not in macs:
-        mac = macs[0]
-    reading = store.latest(mac)
-    if reading is None:
-        log.warning("Widget not sent to %s: no data for %s", chat_id, mac)
-        return None
-    html = build_widget_html(settings, store, mac, now)
-    if html is None:
-        log.warning("Widget not sent to %s: no chart data for %s", chat_id, mac)
-        return None
-    if compressed_size(html) > MAX_COMPRESSED_BYTES:
-        log.warning("Widget not sent to %s: html too big (%d compressed)", chat_id, compressed_size(html))
-        return None
-    keyboard = build_widget_keyboard(settings, macs, mac, owner)
     try:
-        message_id = await send_widget(bot, chat_id, html, caption(settings, reading, now), keyboard)
+        now = time.time()
+        macs = store.devices()
+        if not macs:
+            log.warning("Widget not sent to %s: no devices", chat_id)
+            return None
+        if mac not in macs:
+            mac = macs[0]
+        reading = store.latest(mac)
+        if reading is None:
+            log.warning("Widget not sent to %s: no data for %s", chat_id, mac)
+            return None
+        html = build_widget_html(settings, store, mac, now)
+        if html is None:
+            log.warning("Widget not sent to %s: no chart data for %s", chat_id, mac)
+            return None
+        if compressed_size(html) > MAX_COMPRESSED_BYTES:
+            log.warning("Widget not sent to %s: html too big (%d compressed)", chat_id, compressed_size(html))
+            return None
+        keyboard = build_widget_keyboard(settings, macs, mac, owner)
+        message_id = await send_widget(
+            bot, chat_id, html, caption(settings, reading, now), keyboard,
+            public_data=build_public_data(reading, n=1),
+        )
     except Exception as exc:
         log.warning("Widget not sent to %s (%s), falling back to PNG", chat_id, exc)
         return None

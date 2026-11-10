@@ -226,6 +226,53 @@ async def test_send_widget_summary_none_on_size_overflow(monkeypatch):
     assert bot.session.calls == []
 
 
+async def test_send_widget_summary_sends_initial_public_data():
+    bot = fake_bot_with_session(ok=True, result={"message_id": 42})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    assert await send_widget_summary(bot, S, store, 7, owner=7) is not None
+    method, payload = bot.session.calls[0]
+    assert method == "sendWidget"
+    parsed = json.loads(payload["public_data"])
+    latest = store.latest("AA")
+    assert parsed == json.loads(build_public_data(latest, n=1))
+    assert parsed["n"] == 1 and parsed["co2"] == 700 and parsed["ts"] == latest.ts
+
+
+async def test_send_widget_omits_public_data_by_default():
+    bot = fake_bot_with_session(ok=True, result={"message_id": 1})
+    await send_widget(bot, 7, "<html>x</html>", "cap", None)
+    _, payload = bot.session.calls[0]
+    assert "public_data" not in payload
+
+
+async def test_send_widget_summary_falls_back_on_build_error(monkeypatch):
+    import app.widget as widget
+
+    def boom(*a):
+        raise RuntimeError("malformed row")
+
+    bot = fake_bot_with_session(ok=True, result={"message_id": 1})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    monkeypatch.setattr(widget, "build_widget_html", boom)
+    assert await send_widget_summary(bot, S, store, 7, owner=7) is None
+    assert bot.session.calls == []
+
+
+async def test_send_widget_summary_falls_back_on_store_error(monkeypatch):
+    bot = fake_bot_with_session(ok=True, result={"message_id": 1})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+
+    def boom(*a):
+        raise RuntimeError("sqlite is busy")
+
+    monkeypatch.setattr(store, "latest", boom)
+    assert await send_widget_summary(bot, S, store, 7, owner=7) is None
+    assert bot.session.calls == []
+
+
 def edit_calls(bot) -> list[tuple[str, dict]]:
     return [c for c in bot.session.calls if c[0] == "editMessageWidgetData"]
 

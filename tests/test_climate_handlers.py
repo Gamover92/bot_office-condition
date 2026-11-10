@@ -139,3 +139,51 @@ async def test_widget_button_falls_back_to_png_edit():
     edit.assert_awaited_once()
     delete.assert_not_awaited()
     assert store.get_widget_message(7, 1) == "AA"
+
+
+def store_with_data(store: Store) -> Store:
+    import time
+
+    from app.qingping import Reading
+
+    now = int(time.time())
+    store.add([Reading("AA", now - i * 60, {"co2": 700.0}) for i in range(60)])
+    return store
+
+
+async def test_private_widget_build_error_falls_back_to_png(monkeypatch):
+    import app.widget as widget
+
+    store = store_with_data(Store(":memory:"))
+    router = climate.build_router(Settings(bot_token="x"), store)
+
+    def boom(*a):
+        raise RuntimeError("malformed row")
+
+    monkeypatch.setattr(widget, "build_widget_html", boom)
+    with patch.object(climate, "send_view", AsyncMock()) as png:
+        await message_handlers(router)["climate"](message=fake_message("private"), bot=AsyncMock())
+    png.assert_awaited_once()
+
+
+async def test_widget_button_build_error_falls_back_to_edit(monkeypatch):
+    import app.widget as widget
+    from aiogram.types import Message
+
+    store = store_with_data(Store(":memory:"))
+    router = climate.build_router(Settings(bot_token="x"), store)
+    query = widget_query(store)
+
+    def boom(*a):
+        raise RuntimeError("malformed row")
+
+    monkeypatch.setattr(widget, "build_widget_html", boom)
+    with patch.object(climate, "build_view", AsyncMock()), \
+         patch.object(climate, "edit_view", AsyncMock()) as edit, \
+         patch.object(Message, "delete", new=AsyncMock()) as delete:
+        await handlers(router)["on_button"](
+            query=query, callback_data=ClimateCb(mac="AA", metric="co2", hours=24, owner=7)
+        )
+    edit.assert_awaited_once()
+    delete.assert_not_awaited()
+    query.answer.assert_awaited_once()
