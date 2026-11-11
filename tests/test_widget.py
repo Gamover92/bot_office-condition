@@ -178,6 +178,95 @@ def test_html_bakes_all_metrics_periods_and_office_tz():
     assert "Europe/Moscow" in html or "+03:00" in html
 
 
+def test_html_tiles_use_grid_without_wrap():
+    """Плитки — grid с колонками по числу метрик: пятая не переносится на всю ширину."""
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0, "temperature": 22.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "display:grid" in html
+    assert "grid-template-columns:repeat(2,1fr)" in html
+
+
+def test_html_shows_live_update_time_from_public_data():
+    """Виджет сам показывает время обновления из public_data.ts: caption статична."""
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert 'id="upd"' in html
+    assert "d.ts" in html
+
+
+def test_html_redraws_chart_on_resize():
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "resize" in html
+
+
+def test_html_buttons_expose_pressed_state():
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "aria-pressed" in html
+
+
+def test_html_canvas_has_accessible_label():
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert 'role="img"' in html and "aria-label" in html
+
+
+def test_html_chart_title_names_metric_and_period():
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert 'id="cap"' in html and "UN=" in html
+
+
+def test_html_active_button_passes_contrast():
+    """AA для мелкого белого текста: контраст >= 4.5 (у #2f80ed было 3.87)."""
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert ".b button.on{background:#1d6bd8" in html
+
+
+def test_html_zone_bands_blend_without_global_alpha():
+    """Зоны нормы — непрозрачная заливка, смешанная с фоном темы:
+    десктопный рендерер Telegram теряет globalAlpha при fillRect."""
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "globalAlpha" not in html
+    assert "rgba(" in html  # запасной путь вне Telegram, где фон неизвестен
+
+
+def test_html_explains_zone_bands():
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "зоны нормы" in html
+
+
+def test_html_axis_labels_follow_theme_text_color():
+    """#888 на белом — 3.54:1 (провал AA); берём text_color темы Telegram."""
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    html = build_widget_html(S, store, "AA", time.time())
+    assert "fillStyle=LBL" in html
+
+
+async def test_send_widget_summary_marks_caption_live():
+    """Подпись виджета идёт с live=True: без статичной строки «Обновлено»."""
+    bot = fake_bot_with_session(ok=True, result={"message_id": 42})
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    await send_widget_summary(bot, S, store, 7, owner=7)
+    payload = bot.session.calls[0][1]
+    assert "Обновлено" not in payload["caption"]
+
+
 def test_html_breaks_series_at_sensor_gap():
     """Разрыв в данных (перезапуск датчика) — два сегмента, хвост не сдвигается."""
     store = Store(":memory:")

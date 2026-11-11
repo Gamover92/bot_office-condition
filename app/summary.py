@@ -34,7 +34,9 @@ def device_name(settings: Settings, mac: str) -> str:
     return settings.device_names.get(mac, f"Датчик {mac[-4:]}")
 
 
-def caption(settings: Settings, reading: Reading | None, now: float) -> str:
+def caption(settings: Settings, reading: Reading | None, now: float, live: bool = False) -> str:
+    """Подпись сводки. live=True — для виджета: строка «Обновлено» опускается,
+    время обновления виджет показывает сам из public_data."""
     if reading is None:
         return NO_DATA
     values = reading.values
@@ -48,9 +50,10 @@ def caption(settings: Settings, reading: Reading | None, now: float) -> str:
     if tips:
         lines.append("")
         lines += [f"💡 {html.escape(t)}" for t in tips]
-    when = datetime.fromtimestamp(reading.ts, ZoneInfo(settings.tz)).strftime("%d.%m %H:%M")
-    stale = " ⚠️ данные устарели" if now - reading.ts > settings.stale_after_min * 60 else ""
-    lines += ["", f"<i>Обновлено {when}{stale}</i>"]
+    if not live:
+        when = datetime.fromtimestamp(reading.ts, ZoneInfo(settings.tz)).strftime("%d.%m %H:%M")
+        stale = " ⚠️ данные устарели" if now - reading.ts > settings.stale_after_min * 60 else ""
+        lines += ["", f"<i>Обновлено {when}{stale}</i>"]
     return "\n".join(lines)
 
 

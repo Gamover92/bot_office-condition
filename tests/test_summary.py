@@ -30,6 +30,14 @@ def test_caption_stale_and_no_data():
     assert caption(S, None, NOW) == NO_DATA
 
 
+def test_caption_live_omits_updated_line():
+    """Подпись живого виджета без «Обновлено»: время обновления показывает сам виджет."""
+    r = Reading("AABB", NOW - 60, {"co2": 700})
+    text = caption(S, r, NOW, live=True)
+    assert "Обновлено" not in text
+    assert "Климат" in text
+
+
 def test_alert_texts():
     bad = alert_text(S, "AABB", Event("co2", "bad", 1250, (None, 1200)))
     assert bad.startswith("🔴 <b>Опен&lt;спейс&gt;</b>: CO₂ 1250 ppm (норма до 1200).")

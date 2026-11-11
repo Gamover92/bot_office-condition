@@ -185,31 +185,38 @@ def _bake_zones(metric: str) -> list[list]:
 
 _CSS = (
     "<style>"
-    'body{margin:0;padding:6px;font:13px/1.4 -apple-system,"Segoe UI",sans-serif}'
-    ".r{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:2px}"
-    ".c{flex:1;min-width:22%;text-align:center;background:rgba(128,128,128,.12);"
-    "border-radius:6px;padding:4px 0}"
-    ".n{font-size:15px;font-weight:600}.l{font-size:10px;opacity:.6}"
-    ".b{display:flex;flex-wrap:wrap;gap:3px;margin:4px 0}"
-    ".b button{flex:1;min-width:14%;font-size:11px;padding:3px 1px;border:0;"
-    "border-radius:5px;background:rgba(128,128,128,.15);color:inherit;cursor:pointer}"
+    'body{margin:0;padding:10px;font:13px/1.45 -apple-system,"Segoe UI",Roboto,sans-serif;'
+    "-webkit-font-smoothing:antialiased}"
+    ".r{display:grid;gap:6px;margin-bottom:8px}"
+    ".c{text-align:center;border:1px solid rgba(128,128,128,.18);"
+    "border-radius:10px;padding:7px 2px 6px;background:rgba(128,128,128,.07)}"
+    ".n{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;"
+    "letter-spacing:-.01em}"
+    ".l{font-size:10px;opacity:.55;text-transform:uppercase;letter-spacing:.04em;margin-top:1px}"
+    ".t{font-size:11px;opacity:.6;text-align:center;margin:6px 0 2px}"
+    ".b{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}"
+    ".b button{flex:1;min-width:14%;font:600 11px/1 inherit;font-family:inherit;"
+    "padding:8px 4px;border:0;border-radius:999px;background:rgba(128,128,128,.12);"
+    "color:inherit;cursor:pointer;transition:background .15s,color .15s}"
+    ".b button:focus-visible{outline:2px solid #2f80ed;outline-offset:1px}"
     ".b button.on{background:#2f80ed;color:#fff}"
-    "canvas{width:100%;height:140px;display:block}"
+    "canvas{width:100%;height:150px;display:block}"
     "</style>"
 )
 
 _JS = """<script>
-var cur={m:MS[0],h:PS[1]!=null?PS[1]:PS[0]},last="";
+var cur={m:MS[0],h:PS[1]!=null?PS[1]:PS[0]},last="",LBL="#888",rT;
 function $(i){return document.getElementById(i)}
 function fmt(t,lg){var d=new Date((t+OFF*60)*1000);
 function p(x){return(x<10?"0":"")+x}
 return lg?p(d.getUTCDate())+"."+p(d.getUTCMonth()+1):p(d.getUTCHours())+":"+p(d.getUTCMinutes())}
 function draw(){var SG=D[cur.m+":"+cur.h],cv=$("cv");
-var w=cv.clientWidth||360,h=140,dpr=window.devicePixelRatio||1;
+var w=cv.clientWidth||360,h=150,dpr=window.devicePixelRatio||1;
 cv.width=w*dpr;cv.height=h*dpr;
 var x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);
 x.clearRect(0,0,w,h);
-x.fillStyle="#888";x.font="10px sans-serif";
+x.fillStyle=LBL;x.font="10px sans-serif";
+cv.setAttribute("aria-label","График: "+LB[cur.m]+", "+UN[cur.m]);
 if(!SG||!SG.length){x.fillText("нет данных",8,20);return}
 var t0=Infinity,t1=-Infinity,lo=Infinity,hi=-Infinity,i,j,sg,V;
 for(j=0;j<SG.length;j++){sg=SG[j];V=sg[2];
@@ -217,7 +224,7 @@ if(sg[0]<t0)t0=sg[0];
 var te=sg[0]+sg[1]*(V.length-1);if(te>t1)t1=te;
 for(i=0;i<V.length;i++){if(V[i]<lo)lo=V[i];if(V[i]>hi)hi=V[i]}}
 var pad=(hi-lo)*0.15||1;lo-=pad;hi+=pad;
-var L=30,B=14,iw=w-L-4,ih=h-B-6;
+var L=34,B=16,iw=w-L-4,ih=h-B-6;
 function X(t){return L+(t-t0)/((t1-t0)||1)*iw}
 function Y(v){return 4+(hi-v)/(hi-lo)*ih}
 var zs=Z[cur.m]||[];
@@ -225,19 +232,24 @@ for(i=0;i<zs.length;i++){var a=Math.max(zs[i][0]==null?lo:zs[i][0],lo),
 b=Math.min(zs[i][1]==null?hi:zs[i][1],hi);
 if(a<b){x.fillStyle=zs[i][2];x.globalAlpha=0.12;
 x.fillRect(L,Y(b),iw,Y(a)-Y(b));x.globalAlpha=1}}
-x.strokeStyle=LC;x.lineWidth=1.5;
+x.strokeStyle=LC;x.lineWidth=2;x.lineJoin="round";x.lineCap="round";
 for(j=0;j<SG.length;j++){sg=SG[j];V=sg[2];x.beginPath();
 for(i=0;i<V.length;i++){var px=X(sg[0]+sg[1]*i),py=Y(V[i]);
 i?x.lineTo(px,py):x.moveTo(px,py)}
-x.stroke()}
+x.stroke();
+x.lineTo(X(sg[0]+sg[1]*(V.length-1)),h-B);x.lineTo(X(sg[0]),h-B);x.closePath();
+x.save();x.globalAlpha=0.08;x.fillStyle=LC;x.fill();x.restore()}
 var lg=(t1-t0)>172800;
 for(i=0;i<=3;i++){var t=t0+(t1-t0)*i/3,s2=fmt(t,lg),px=X(t);
 x.fillText(s2,Math.min(Math.max(px-13,0),w-28),h-2)}
 x.fillText(""+Math.round(hi*10)/10,2,10);
 x.fillText(""+Math.round(lo*10)/10,2,h-B-2)}
-function mark(){var i;
-for(i=0;i<MS.length;i++)$("m_"+MS[i]).className=MS[i]==cur.m?"on":"";
-for(i=0;i<PS.length;i++)$("p_"+PS[i]).className=PS[i]==cur.h?"on":""}
+function mark(){var i,b,on;
+for(i=0;i<MS.length;i++){b=$("m_"+MS[i]);on=MS[i]==cur.m;
+b.className=on?"on":"";b.setAttribute("aria-pressed",on)}
+for(i=0;i<PS.length;i++){b=$("p_"+PS[i]);on=PS[i]==cur.h;
+b.className=on?"on":"";b.setAttribute("aria-pressed",on)}
+$("cap").textContent=LB[cur.m]+", "+UN[cur.m]+" · "+PL[cur.h]}
 function buttons(){var i,b,mb=$("mb"),pb=$("pb");
 for(i=0;i<MS.length;i++){(function(m){b=document.createElement("button");
 b.textContent=LB[m];b.id="m_"+m;
@@ -246,15 +258,30 @@ for(i=0;i<PS.length;i++){(function(h){b=document.createElement("button");
 b.textContent=PL[h];b.id="p_"+h;
 b.onclick=function(){cur.h=h;mark();draw()};pb.appendChild(b)})(PS[i])}
 mark()}
+function col(m,v){var zs=Z[m]||[];
+for(var i=0;i<zs.length;i++){var a=zs[i][0],b=zs[i][1];
+if((a==null||v>=a)&&(b==null||v<b))return zs[i][2]}
+return""}
 function tick(){try{var p=window.TelegramWidget&&TelegramWidget.publicData;
 if(p&&p!==last){last=p;var d=JSON.parse(p);
 for(var i=0;i<MS.length;i++){var v=d[MS[i]];
-if(v!=null)$("v_"+MS[i]).textContent=v}}}catch(e){}}
+if(v!=null){var e=$("v_"+MS[i]);e.textContent=v;var c=col(MS[i],v);
+if(c)e.style.color=c}}
+if(d.ts)$("upd").textContent="обновлено "+fmt(d.ts)}}catch(e){}}
 function theme(){try{var tp=window.TelegramWidget&&TelegramWidget.themeParams;
 if(tp){if(tp.bg_color)document.body.style.background=tp.bg_color;
-if(tp.text_color)document.body.style.color=tp.text_color}}catch(e){}}
+if(tp.text_color){document.body.style.color=tp.text_color;LBL=tp.text_color}}}catch(e){}}
 theme();buttons();draw();setInterval(tick,2000);tick();
+window.addEventListener("resize",function(){clearTimeout(rT);rT=setTimeout(draw,150)});
 </script>"""
+
+
+def _zone_color(metric: str, value: float) -> str:
+    """Цвет зоны нормы, в которую попадает значение; пусто, если зон нет."""
+    for a, b, level in zones(metric):
+        if a <= value < b:
+            return ZONE_COLORS[level]
+    return ""
 
 
 def _render_html(
@@ -268,14 +295,18 @@ def _render_html(
     off = int((datetime.fromtimestamp(now, tz).utcoffset() or timedelta(0)).total_seconds() // 60)
     zones = {m: _bake_zones(m) for m in metrics}
     cells = "".join(
-        f'<div class="c"><div class="n" id="v_{m}">{_compact(m, reading.values[m])}</div>'
+        f'<div class="c"><div class="n" id="v_{m}" style="color:{_zone_color(m, reading.values[m])}">'
+        f'{_compact(m, reading.values[m])}</div>'
         f'<div class="l">{SHORT[m]} {METRICS[m][1]}</div></div>'
         for m in metrics
     )
+    cols = len(metrics) if len(metrics) <= 5 else 4
+    updated = datetime.fromtimestamp(reading.ts, tz).strftime("%H:%M")
     dump = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
     head = (
         f"var D={dump(data)},Z={dump(zones)},"
         f"LB={dump({m: SHORT[m] for m in metrics})},"
+        f"UN={dump({m: METRICS[m][1] for m in metrics})},"
         f"MS={dump(metrics)},PS={dump(list(PERIODS))},"
         f"PL={dump({str(h): label for h, label in PERIODS.items()})},"
         f'OFF={off},TZ={dump(settings.tz)},LC="{LINE_COLOR}";'
@@ -283,8 +314,11 @@ def _render_html(
     return (
         '<!doctype html><meta charset="utf-8">'
         + _CSS
-        + f'<div class="r">{cells}</div><canvas id="cv"></canvas>'
+        + f'<div class="r" style="grid-template-columns:repeat({cols},1fr)">{cells}</div>'
+        + '<div class="t" id="cap"></div>'
+        + '<canvas id="cv" role="img" aria-label="График"></canvas>'
         + '<div class="b" id="mb"></div><div class="b" id="pb"></div>'
+        + f'<div class="t" id="upd">обновлено {updated}</div>'
         + "<script>"
         + head
         + _JS[len("<script>") :]
@@ -365,7 +399,7 @@ async def send_widget_summary(
             return None
         keyboard = build_widget_keyboard(settings, macs, mac, owner)
         message_id = await send_widget(
-            bot, chat_id, html, caption(settings, reading, now), keyboard,
+            bot, chat_id, html, caption(settings, reading, now, live=True), keyboard,
             public_data=build_public_data(reading, n=1),
         )
     except Exception as exc:
