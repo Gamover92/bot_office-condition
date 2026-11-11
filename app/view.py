@@ -80,7 +80,13 @@ def build_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def build_widget_keyboard(settings: Settings, macs: list[str], mac: str, owner: int) -> InlineKeyboardMarkup:
+def build_widget_keyboard(
+    settings: Settings, macs: list[str], mac: str, owner: int | None
+) -> InlineKeyboardMarkup | None:
+    # «Обновить» — ручной подъём виджета вниз чата со свежим графиком:
+    # фоновый цикл виджет не пересоздаёт, график обновляется только так.
+    if owner is None:
+        return None
     rows = []
     if len(macs) > 1:
         rows.append([_button(device_name(settings, m), m, "co2", 24, owner, m == mac) for m in sorted(macs)])

@@ -28,6 +28,10 @@ class Store:
             " mac TEXT NOT NULL, sent_at INTEGER NOT NULL,"
             " PRIMARY KEY (chat_id, message_id))"
         )
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(widget_messages)")}
+        if "owner" not in cols:
+            # Кто попросил виджет: только он может жать его кнопки.
+            self.db.execute("ALTER TABLE widget_messages ADD COLUMN owner INTEGER")
         self.db.commit()
 
     def add(self, readings: list[Reading]) -> None:
@@ -84,11 +88,13 @@ class Store:
         self.db.execute("DELETE FROM readings WHERE ts < ?", (int(time.time()) - keep_days * 86400,))
         self.db.commit()
 
-    def add_widget_message(self, chat_id: int, message_id: int, mac: str, sent_at: int) -> None:
+    def add_widget_message(
+        self, chat_id: int, message_id: int, mac: str, sent_at: int, owner: int | None = None
+    ) -> None:
         self.db.execute(
-            "INSERT OR REPLACE INTO widget_messages (chat_id, message_id, mac, sent_at)"
-            " VALUES (?, ?, ?, ?)",
-            (chat_id, message_id, mac, sent_at),
+            "INSERT OR REPLACE INTO widget_messages (chat_id, message_id, mac, sent_at, owner)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (chat_id, message_id, mac, sent_at, owner),
         )
         self.db.commit()
 
@@ -99,12 +105,12 @@ class Store:
         ).fetchone()
         return row[0] if row else None
 
-    def widget_messages(self, max_age_sec: int, now: int) -> list[tuple[int, int, str]]:
+    def widget_messages(self, max_age_sec: int, now: int) -> list[tuple[int, int, str, int | None]]:
         rows = self.db.execute(
-            "SELECT chat_id, message_id, mac FROM widget_messages WHERE sent_at >= ?",
+            "SELECT chat_id, message_id, mac, owner FROM widget_messages WHERE sent_at >= ?",
             (now - max_age_sec,),
         )
-        return [(c, m, mac) for c, m, mac in rows]
+        return [(c, m, mac, o) for c, m, mac, o in rows]
 
     def drop_widget_message(self, chat_id: int, message_id: int) -> None:
         self.db.execute(

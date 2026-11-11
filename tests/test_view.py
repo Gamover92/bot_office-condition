@@ -40,6 +40,7 @@ def test_widget_keyboard_two_devices():
 
 def test_widget_keyboard_one_device():
     assert texts(build_widget_keyboard(S, ["AA"], "AA", owner=7)) == [["🔄 Обновить"]]
+    assert build_widget_keyboard(S, ["AA", "BB"], "AA", owner=None) is None
 
 
 def fill(store: Store, mac: str, values: dict, count: int = 10) -> float:

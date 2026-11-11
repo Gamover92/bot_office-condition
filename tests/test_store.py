@@ -61,11 +61,11 @@ def test_delete_device_normalises_mac_and_returns_count():
 
 def test_widget_messages_roundtrip():
     store = Store(":memory:")
-    store.add_widget_message(-100, 5, "AA", sent_at=1000)
+    store.add_widget_message(-100, 5, "AA", sent_at=1000, owner=7)
     store.add_widget_message(-100, 6, "BB", sent_at=300)
     assert store.get_widget_message(-100, 5) == "AA"
     assert store.get_widget_message(-100, 9) is None
-    assert store.widget_messages(max_age_sec=600, now=1000) == [(-100, 5, "AA")]
+    assert store.widget_messages(max_age_sec=600, now=1000) == [(-100, 5, "AA", 7)]
     store.drop_widget_message(-100, 5)
     assert store.get_widget_message(-100, 5) is None
 
