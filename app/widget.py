@@ -33,6 +33,7 @@ MAX_COMPRESSED_BYTES = 3800
 MAX_HTML_BYTES = 32 * 1024
 
 UPDATE_INTERVAL_SEC = 5
+
 MAX_WIDGET_AGE_HOURS = 24
 
 # Кандидаты плотности точек на серию: берём первый, влезающий в бюджет.
@@ -171,14 +172,20 @@ def _encode_series(points: list[tuple[int, float]], metric: str, max_points: int
 
 
 def _bake_zones(metric: str) -> list[list]:
-    """Зоны метрики как [[lo, hi, color], ...]; края None = бесконечность."""
+    """Зоны метрики как [[lo, hi, [r, g, b]], ...]; края None = бесконечность.
+
+    Цвет — тройка RGB, не hex: виджет смешивает зону с цветом фона темы и
+    заливает непрозрачно (globalAlpha ненадёжен в десктопном рендерере Telegram).
+    """
     inf = float("inf")
     out = []
     for a, b, level in zones(metric):
+        h = ZONE_COLORS[level]
+        rgb = [int(h[1:3], 16), int(h[3:5], 16), int(h[5:7], 16)]
         out.append([
             None if a == -inf else a,
             None if b == inf else b,
-            ZONE_COLORS[level],
+            rgb,
         ])
     return out
 
@@ -192,28 +199,33 @@ _CSS = (
     "border-radius:10px;padding:7px 2px 6px;background:rgba(128,128,128,.07)}"
     ".n{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;"
     "letter-spacing:-.01em}"
+    ".d{display:inline-block;width:7px;height:7px;border-radius:50%;"
+    "margin-right:4px;vertical-align:2px}"
     ".l{font-size:10px;opacity:.55;text-transform:uppercase;letter-spacing:.04em;margin-top:1px}"
     ".t{font-size:11px;opacity:.6;text-align:center;margin:6px 0 2px}"
     ".b{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}"
     ".b button{flex:1;min-width:14%;font:600 11px/1 inherit;font-family:inherit;"
     "padding:8px 4px;border:0;border-radius:999px;background:rgba(128,128,128,.12);"
     "color:inherit;cursor:pointer;transition:background .15s,color .15s}"
-    ".b button:focus-visible{outline:2px solid #2f80ed;outline-offset:1px}"
-    ".b button.on{background:#2f80ed;color:#fff}"
+    ".b button:focus-visible{outline:2px solid #1d6bd8;outline-offset:1px}"
+    ".b button.on{background:#1d6bd8;color:#fff}"
     "canvas{width:100%;height:150px;display:block}"
     "</style>"
 )
 
 _JS = """<script>
-var cur={m:MS[0],h:PS[1]!=null?PS[1]:PS[0]},last="",LBL="#888",rT;
+var cur={m:MS[0],h:PS[1]!=null?PS[1]:PS[0]},last="",LBL="#888",rT,BG=null;
 function $(i){return document.getElementById(i)}
+function hx(s){return[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]}
+function mix(c,k){return"rgb("+Math.round(c[0]*k+BG[0]*(1-k))+","+
+Math.round(c[1]*k+BG[1]*(1-k))+","+Math.round(c[2]*k+BG[2]*(1-k))+")"}
 function fmt(t,lg){var d=new Date((t+OFF*60)*1000);
 function p(x){return(x<10?"0":"")+x}
 return lg?p(d.getUTCDate())+"."+p(d.getUTCMonth()+1):p(d.getUTCHours())+":"+p(d.getUTCMinutes())}
 function draw(){var SG=D[cur.m+":"+cur.h],cv=$("cv");
-var w=cv.clientWidth||360,h=150,dpr=window.devicePixelRatio||1;
-cv.width=w*dpr;cv.height=h*dpr;
-var x=cv.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);
+var w=cv.clientWidth||360,h=150;
+cv.width=w;cv.height=h;
+var x=cv.getContext("2d");
 x.clearRect(0,0,w,h);
 x.fillStyle=LBL;x.font="10px sans-serif";
 cv.setAttribute("aria-label","График: "+LB[cur.m]+", "+UN[cur.m]);
@@ -229,17 +241,18 @@ function X(t){return L+(t-t0)/((t1-t0)||1)*iw}
 function Y(v){return 4+(hi-v)/(hi-lo)*ih}
 var zs=Z[cur.m]||[];
 for(i=0;i<zs.length;i++){var a=Math.max(zs[i][0]==null?lo:zs[i][0],lo),
-b=Math.min(zs[i][1]==null?hi:zs[i][1],hi);
-if(a<b){x.fillStyle=zs[i][2];x.globalAlpha=0.12;
-x.fillRect(L,Y(b),iw,Y(a)-Y(b));x.globalAlpha=1}}
+b=Math.min(zs[i][1]==null?hi:zs[i][1],hi),zc=zs[i][2];
+if(a<b){x.fillStyle=BG?mix(zc,0.12):"rgba("+zc+",.12)";
+x.fillRect(L,Y(b),iw,Y(a)-Y(b))}}
 x.strokeStyle=LC;x.lineWidth=2;x.lineJoin="round";x.lineCap="round";
 for(j=0;j<SG.length;j++){sg=SG[j];V=sg[2];x.beginPath();
 for(i=0;i<V.length;i++){var px=X(sg[0]+sg[1]*i),py=Y(V[i]);
 i?x.lineTo(px,py):x.moveTo(px,py)}
 x.stroke();
 x.lineTo(X(sg[0]+sg[1]*(V.length-1)),h-B);x.lineTo(X(sg[0]),h-B);x.closePath();
-x.save();x.globalAlpha=0.08;x.fillStyle=LC;x.fill();x.restore()}
+x.fillStyle=BG?mix(LCA,.08):"rgba("+LCA+",.08)";x.fill()}
 var lg=(t1-t0)>172800;
+x.fillStyle=LBL;
 for(i=0;i<=3;i++){var t=t0+(t1-t0)*i/3,s2=fmt(t,lg),px=X(t);
 x.fillText(s2,Math.min(Math.max(px-13,0),w-28),h-2)}
 x.fillText(""+Math.round(hi*10)/10,2,10);
@@ -260,16 +273,17 @@ b.onclick=function(){cur.h=h;mark();draw()};pb.appendChild(b)})(PS[i])}
 mark()}
 function col(m,v){var zs=Z[m]||[];
 for(var i=0;i<zs.length;i++){var a=zs[i][0],b=zs[i][1];
-if((a==null||v>=a)&&(b==null||v<b))return zs[i][2]}
+if((a==null||v>=a)&&(b==null||v<b))return"rgb("+zs[i][2]+")"}
 return""}
 function tick(){try{var p=window.TelegramWidget&&TelegramWidget.publicData;
 if(p&&p!==last){last=p;var d=JSON.parse(p);
 for(var i=0;i<MS.length;i++){var v=d[MS[i]];
-if(v!=null){var e=$("v_"+MS[i]);e.textContent=v;var c=col(MS[i],v);
-if(c)e.style.color=c}}
+if(v!=null){$("v_"+MS[i]).textContent=v;var c=col(MS[i],v);
+if(c)$("d_"+MS[i]).style.background=c}}
 if(d.ts)$("upd").textContent="обновлено "+fmt(d.ts)}}catch(e){}}
 function theme(){try{var tp=window.TelegramWidget&&TelegramWidget.themeParams;
-if(tp){if(tp.bg_color)document.body.style.background=tp.bg_color;
+if(tp){if(tp.bg_color){document.body.style.background=tp.bg_color;
+if(/^#[0-9a-fA-F]{6}$/.test(tp.bg_color))BG=hx(tp.bg_color)}
 if(tp.text_color){document.body.style.color=tp.text_color;LBL=tp.text_color}}}catch(e){}}
 theme();buttons();draw();setInterval(tick,2000);tick();
 window.addEventListener("resize",function(){clearTimeout(rT);rT=setTimeout(draw,150)});
@@ -295,21 +309,23 @@ def _render_html(
     off = int((datetime.fromtimestamp(now, tz).utcoffset() or timedelta(0)).total_seconds() // 60)
     zones = {m: _bake_zones(m) for m in metrics}
     cells = "".join(
-        f'<div class="c"><div class="n" id="v_{m}" style="color:{_zone_color(m, reading.values[m])}">'
-        f'{_compact(m, reading.values[m])}</div>'
+        f'<div class="c"><div class="n"><span class="d" id="d_{m}" '
+        f'style="background:{_zone_color(m, reading.values[m])}"></span>'
+        f'<span id="v_{m}">{_compact(m, reading.values[m])}</span></div>'
         f'<div class="l">{SHORT[m]} {METRICS[m][1]}</div></div>'
         for m in metrics
     )
     cols = len(metrics) if len(metrics) <= 5 else 4
     updated = datetime.fromtimestamp(reading.ts, tz).strftime("%H:%M")
     dump = lambda o: json.dumps(o, separators=(",", ":"), ensure_ascii=False)
+    lc_rgb = ",".join(str(int(LINE_COLOR[i : i + 2], 16)) for i in (1, 3, 5))
     head = (
         f"var D={dump(data)},Z={dump(zones)},"
         f"LB={dump({m: SHORT[m] for m in metrics})},"
         f"UN={dump({m: METRICS[m][1] for m in metrics})},"
         f"MS={dump(metrics)},PS={dump(list(PERIODS))},"
         f"PL={dump({str(h): label for h, label in PERIODS.items()})},"
-        f'OFF={off},TZ={dump(settings.tz)},LC="{LINE_COLOR}";'
+        f'OFF={off},TZ={dump(settings.tz)},LC="{LINE_COLOR}",LCA=[{lc_rgb}];'
     )
     return (
         '<!doctype html><meta charset="utf-8">'
@@ -317,6 +333,7 @@ def _render_html(
         + f'<div class="r" style="grid-template-columns:repeat({cols},1fr)">{cells}</div>'
         + '<div class="t" id="cap"></div>'
         + '<canvas id="cv" role="img" aria-label="График"></canvas>'
+        + '<div class="t">фон — зоны нормы</div>'
         + '<div class="b" id="mb"></div><div class="b" id="pb"></div>'
         + f'<div class="t" id="upd">обновлено {updated}</div>'
         + "<script>"
@@ -369,7 +386,7 @@ async def send_widget_summary(
     settings: Settings,
     store: Store,
     chat_id: int,
-    owner: int,
+    owner: int | None,
     mac: str | None = None,
 ) -> int | None:
     """Отправляет виджет-сводку, возвращает message_id. None — вызывающий шлёт PNG.
@@ -405,42 +422,64 @@ async def send_widget_summary(
     except Exception as exc:
         log.warning("Widget not sent to %s (%s), falling back to PNG", chat_id, exc)
         return None
-    store.add_widget_message(chat_id, message_id, mac, int(now))
+    store.add_widget_message(chat_id, message_id, mac, int(now), owner)
     return message_id
 
 
 async def update_widget_data_once(bot: Bot, settings: Settings, store: Store, cache: dict) -> None:
-    """Один проход по свежим виджет-сообщениям: правит public_data при изменениях.
+    """Один проход по свежим виджет-сообщениям: правки public_data.
 
-    ``cache[(chat_id, message_id)] = (data, n)`` — последняя отправленная строка
-    и её счётчик. Счётчик растёт с каждой правкой: Telegram отклоняет правку
-    с неизменным public_data, а после перезапуска процесса кэш пуст и первая
-    правка не должна совпасть с тем, что уже лежит в сообщении.
-    «message not found» вычищает запись из реестра; прочие ошибки — warning,
-    проход продолжается.
+    ``cache[(chat_id, message_id)] = (data, n)``: последняя отправленная
+    строка public_data и её счётчик. Счётчик растёт с каждой правкой:
+    Telegram отклоняет правку с неизменным public_data, а после перезапуска
+    процесса кэш пуст и первая правка не должна совпасть с тем, что уже
+    лежит в сообщении.
+    График в HTML править нельзя, но фоновый цикл виджет не пересоздаёт:
+    новые сообщения в чате только по явному запросу — кнопке «Обновить»
+    или /climate. «message not found» вычищает запись из реестра;
+    прочие ошибки — warning, проход продолжается.
     """
     now = int(time.time())
-    for chat_id, message_id, mac in store.widget_messages(MAX_WIDGET_AGE_HOURS * 3600, now):
+    rows = store.widget_messages(MAX_WIDGET_AGE_HOURS * 3600, now)
+    # Живым остаётся только последний виджет чата: старые регистрации
+    # (/climate вызывали повторно) иначе каждый цикл шлют по новому сообщению.
+    latest: dict[int, int] = {}
+    for chat_id, message_id, _, _ in rows:
+        if message_id > latest.get(chat_id, -1):
+            latest[chat_id] = message_id
+    for chat_id, message_id in latest.items():
+        for stale in [m for c, m, _, _ in rows if c == chat_id and m != message_id]:
+            store.drop_widget_message(chat_id, stale)
+            cache.pop((chat_id, stale), None)
+    for chat_id, message_id, mac, _ in rows:
+        if message_id != latest.get(chat_id):
+            continue
         reading = store.latest(mac)
         if reading is None:
             continue
         key = (chat_id, message_id)
         data, n = cache.get(key, (None, 0))
-        if build_public_data(reading, n) == data:
-            continue
-        fresh = build_public_data(reading, n + 1)
-        try:
-            await edit_widget_data(bot, chat_id, message_id, fresh)
-        except RuntimeError as exc:
-            if "message not found" in str(exc).lower():
-                store.drop_widget_message(chat_id, message_id)
-                cache.pop(key, None)
-            else:
+        fresh = build_public_data(reading, n)
+        if fresh != data:
+            fresh = build_public_data(reading, n + 1)
+            try:
+                await edit_widget_data(bot, chat_id, message_id, fresh)
+            except RuntimeError as exc:
+                if "message not found" in str(exc).lower():
+                    store.drop_widget_message(chat_id, message_id)
+                    cache.pop(key, None)
+                    continue
+                if "message is not modified" in str(exc).lower():
+                    # Сервер уже хранит эти данные: правка состоялась. Запоминаем,
+                    # иначе кэш останется пустым и та же правка будет повторяться каждый цикл.
+                    data, n = fresh, n + 1
+                else:
+                    log.warning("Widget update failed for %s/%s: %s", chat_id, message_id, exc)
+            except Exception as exc:
                 log.warning("Widget update failed for %s/%s: %s", chat_id, message_id, exc)
-        except Exception as exc:
-            log.warning("Widget update failed for %s/%s: %s", chat_id, message_id, exc)
-        else:
-            cache[key] = (fresh, n + 1)
+            else:
+                data, n = fresh, n + 1
+        cache[key] = (data, n)
 
 
 async def run_widget_updates(bot: Bot, settings: Settings, store: Store) -> None:

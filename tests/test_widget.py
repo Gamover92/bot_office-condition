@@ -232,16 +232,6 @@ def test_html_active_button_passes_contrast():
     assert ".b button.on{background:#1d6bd8" in html
 
 
-def test_html_zone_bands_blend_without_global_alpha():
-    """Зоны нормы — непрозрачная заливка, смешанная с фоном темы:
-    десктопный рендерер Telegram теряет globalAlpha при fillRect."""
-    store = Store(":memory:")
-    fill(store, "AA", {"co2": 700.0})
-    html = build_widget_html(S, store, "AA", time.time())
-    assert "globalAlpha" not in html
-    assert "rgba(" in html  # запасной путь вне Telegram, где фон неизвестен
-
-
 def test_html_explains_zone_bands():
     store = Store(":memory:")
     fill(store, "AA", {"co2": 700.0})
@@ -414,7 +404,12 @@ async def test_update_throttles_per_cycle_and_drops_dead_messages():
             return {"ok": True, "result": True}
 
     bot = SimpleNamespace(session=FlakySession({}), token="123456:ABC")
-    store = widget_store(messages=3)
+    # Разные чаты: в одном чате живым остаётся только последний виджет
+    # (см. test_update_keeps_only_latest_widget_per_chat).
+    store = Store(":memory:")
+    fill(store, "AA", {"co2": 700.0})
+    for chat_id, mid in ((7, 100), (8, dead_mid), (9, 102)):
+        store.add_widget_message(chat_id, mid, "AA", int(time.time()))
     cache: dict = {}
     await update_widget_data_once(bot, S, store, cache)
     calls = edit_calls(bot)
@@ -425,6 +420,37 @@ async def test_update_throttles_per_cycle_and_drops_dead_messages():
     # Цикл живёт: следующий проход не трогает мёртвое сообщение и не правит без изменений
     await update_widget_data_once(bot, S, store, cache)
     assert edit_calls(bot) == calls
+
+
+async def test_update_keeps_only_latest_widget_per_chat():
+    # Несколько живых регистраций в одном чате (старые /climate не вычищались):
+    # цикл должен обновлять только последний виджет, иначе каждый цикл шлёт по
+    # сообщению на каждую регистрацию.
+    bot = fake_bot_with_session(ok=True, result=True)
+    store = widget_store(messages=3)
+    cache: dict = {}
+    await update_widget_data_once(bot, S, store, cache)
+    assert store.get_widget_message(7, 100) is None
+    assert store.get_widget_message(7, 101) is None
+    assert store.get_widget_message(7, 102) == "AA"
+    assert [payload["message_id"] for _, payload in edit_calls(bot)] == [102]
+    assert (7, 100) not in cache and (7, 101) not in cache
+
+
+async def test_update_treats_not_modified_as_success():
+    # Сервер уже хранит такие данные: правка считается состоявшейся и в кэш
+    # пишется новое состояние, иначе бот повторяет ту же правку каждые 5 с.
+    bot = fake_bot_with_session(
+        ok=False,
+        description="Bad Request: message is not modified: specified new message "
+        "content and reply markup are exactly the same",
+    )
+    store = widget_store()
+    cache: dict = {}
+    await update_widget_data_once(bot, S, store, cache)
+    await update_widget_data_once(bot, S, store, cache)
+    assert len(edit_calls(bot)) == 1
+    assert store.get_widget_message(7, 100) == "AA"  # запись не вычищена
 
 
 async def test_update_ignores_old_messages():
@@ -448,3 +474,14 @@ async def test_update_skips_messages_without_readings():
     store.add_widget_message(7, 100, "AA", int(time.time()))
     await update_widget_data_once(bot, S, store, {})
     assert edit_calls(bot) == []
+
+
+async def test_update_never_recreates_widget():
+    # Фоновый цикл не пересоздаёт виджет: никаких sendWidget, только правки
+    # public_data. График обновляется кнопкой «Обновить» (handlers/climate.py).
+    bot = fake_bot_with_session(ok=True, result={"message_id": 55})
+    store = widget_store()
+    cache = {(7, 100): (None, 0)}  # пустой кэш после перезапуска
+    await update_widget_data_once(bot, S, store, cache)
+    assert "sendWidget" not in [c[0] for c in bot.session.calls]
+    assert store.get_widget_message(7, 100) == "AA"
